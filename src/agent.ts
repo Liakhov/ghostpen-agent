@@ -67,7 +67,12 @@ Style Profile — це закон. Не рекомендація.
 - Не коментуй свій вибір ("Я обрав цей hook тому що...")
 - Не пропонуй альтернативи без запиту
 - Не додавай disclaimer "це AI-контент"
-- Не пиши "---" лінії між секціями поста якщо цього немає в профілі`;
+- Не пиши "---" лінії між секціями поста якщо цього немає в профілі
+
+ЗБЕРЕЖЕННЯ:
+Коли користувач каже "ok", "зберігай", "готово" або щось подібне — виклич save_to_file з повним текстом поста, платформою і темою.
+Після збереження повідом користувача де збережено файл.
+Завжди зберігай. Це обов'язковий крок.`;
 
 const MODEL = "claude-sonnet-4-20250514";
 
@@ -168,13 +173,45 @@ export async function runAgent(userInput: string): Promise<void> {
         'Що змінити? (або "ok" щоб зберегти)\n> ',
       );
 
-      if (["ok", "exit", "quit"].includes(feedback.toLowerCase())) {
-        console.log("\nЗавершено.");
+      if (["exit", "quit"].includes(feedback.toLowerCase())) {
+        console.log("\nЗавершено без збереження.");
         break;
       }
 
       messages.push({ role: "assistant", content: response.content });
       messages.push({ role: "user", content: feedback });
+
+      if (["ok", "зберігай", "готово"].includes(feedback.toLowerCase())) {
+        // Let agent call save_to_file, then finish
+        while (true) {
+          const saveResponse = await client.messages.create({
+            model: MODEL,
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            tools,
+            messages,
+          });
+
+          if (saveResponse.stop_reason === "tool_use") {
+            const toolMessages = await handleToolCalls(saveResponse);
+            messages.push(...toolMessages);
+            continue;
+          }
+
+          const saveText = saveResponse.content
+            .filter(
+              (block): block is Anthropic.TextBlock => block.type === "text",
+            )
+            .map((block) => block.text)
+            .join("\n");
+
+          if (saveText) {
+            console.log("\n" + saveText + "\n");
+          }
+          break;
+        }
+        break;
+      }
     }
   } finally {
     rl.close();
