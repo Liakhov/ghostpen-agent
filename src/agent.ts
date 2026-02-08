@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import * as readline from "node:readline";
 import chalk from "chalk";
 import { toolDefinitions, toolHandlers } from "./tools/index.js";
+import { FEEDBACK_RULES } from "./prompts/tasks/feedback-rules.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -60,8 +61,6 @@ Style Profile — це закон. Не рекомендація.
 2. Чернетка поста — чистий текст, без коментарів, без markdown headers.
    Пост має виглядати ТОЧНО так, як буде опублікований.
 
-3. Питання: "Що змінити?"
-
 Чого НЕ робити:
 - Не додавай "## Ось ваш пост:" перед текстом
 - Не коментуй свій вибір ("Я обрав цей hook тому що...")
@@ -72,7 +71,10 @@ Style Profile — це закон. Не рекомендація.
 ЗБЕРЕЖЕННЯ:
 Коли користувач каже "ok", "зберігай", "готово" або щось подібне — виклич save_to_file з повним текстом поста, платформою і темою.
 Після збереження повідом користувача де збережено файл.
-Завжди зберігай. Це обов'язковий крок.`;
+Завжди зберігай. Це обов'язковий крок.
+
+ФІДБЕК:
+${FEEDBACK_RULES}`;
 
 const MODEL = "claude-sonnet-4-20250514";
 
@@ -111,7 +113,7 @@ async function handleToolCalls(
   for (const block of assistantContent) {
     if (block.type === "tool_use") {
       const label = TOOL_LABELS[block.name] ?? block.name;
-      console.log(chalk.dim(`  ${label}\n`));
+      console.log(chalk.dim(`${label}\n`));
 
       const handler = toolHandlers[block.name];
       if (!handler) {
@@ -131,7 +133,7 @@ async function handleToolCalls(
       const res = result as Record<string, unknown>;
 
       if (res.success === false) {
-        console.log(chalk.yellow(`  ⚠ ${res.message ?? "помилка"}`));
+        console.log(chalk.yellow(`⚠ ${res.message ?? "помилка"}`));
       }
 
       toolResults.push({
@@ -169,7 +171,7 @@ export async function runAgent(userInput: string): Promise<void> {
   try {
     while (true) {
       if (isFirstResponse) {
-        console.log(chalk.dim("  🧠 Думаю...\n"));
+        console.log(chalk.dim("🧠 Думаю...\n"));
       }
 
       const response = await client.messages.create({
