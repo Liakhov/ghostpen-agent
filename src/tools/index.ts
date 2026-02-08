@@ -12,8 +12,21 @@ import {
   readPastPosts,
   readPastPostsSchema,
 } from "./read-past-posts.js";
+import {
+  readNotionPage,
+  readNotionPageSchema,
+  writeToNotion,
+  writeToNotionSchema,
+} from "./notion.js";
+import { isNotionConfigured } from "../utils/config.js";
 
-export const toolDefinitions = [
+type ToolSchema = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+const baseToolDefinitions: ToolSchema[] = [
   readStyleProfileSchema,
   saveToFileSchema,
   trackFeedbackSchema,
@@ -23,10 +36,20 @@ export const toolDefinitions = [
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<object>;
 
-export const toolHandlers: Record<string, ToolHandler> = {
+const baseToolHandlers: Record<string, ToolHandler> = {
   read_style_profile: readStyleProfile as ToolHandler,
   save_to_file: saveToFile as ToolHandler,
   track_feedback: trackFeedback as ToolHandler,
   update_style_profile: updateStyleProfile as ToolHandler,
   read_past_posts: readPastPosts as ToolHandler,
 };
+
+// Conditionally add Notion tools
+if (isNotionConfigured()) {
+  baseToolDefinitions.push(readNotionPageSchema, writeToNotionSchema);
+  baseToolHandlers.read_notion_page = readNotionPage as ToolHandler;
+  baseToolHandlers.write_to_notion = writeToNotion as ToolHandler;
+}
+
+export const toolDefinitions = baseToolDefinitions;
+export const toolHandlers = baseToolHandlers;

@@ -37,34 +37,21 @@ Add your Anthropic API key to `.env`:
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### Usage
+### Create your Style Profile
 
 ```bash
-# Generate a post
-npm run dev "напиши пост про вигорання для LinkedIn"
-
-# Use a specific style profile
-npm run dev "post about AI trends" -- --profile competitor-alex
-
-# Mix your voice with someone's techniques
-npm run dev "пост про найм" -- --mix default competitor-alex
-
-# Create your personal style profile
 npm run dev init
-
-# Create a reference profile (competitor/mentor)
-npm run dev profile create competitor-alex
-
-# List all profiles
-npm run dev profile list
-
-# Analyze your content
-npm run dev analyze
 ```
 
-### Feedback loop
+Paste 10-20 of your best posts separated by `---`. Ghostpen will analyze them and build a profile capturing your tone, hooks, closings, signature phrases, and what you never write.
 
-After generating a draft, Ghostpen waits for your feedback:
+### Generate a post
+
+```bash
+npm run dev "напиши пост про вигорання для LinkedIn"
+```
+
+After generation, give feedback or type `ok` to save:
 
 ```
 Що змінити? (або "ok" щоб зберегти)
@@ -72,11 +59,68 @@ After generating a draft, Ghostpen waits for your feedback:
 
 [regenerated draft]
 
-Що змінити?
 > ok
-
-Завершено.
+💾 Збережено: data/output/generated/2026-02-09-vyhorannya-linkedin.md
 ```
+
+## Commands
+
+```bash
+# Generate a post (default profile)
+npm run dev "тема для платформи"
+
+# Use a specific profile
+npm run dev "post about AI trends" -- --profile competitor-alex
+
+# Mix your voice with someone's techniques
+npm run dev "пост про найм" -- --mix default competitor-alex
+
+# Debug mode (shows agent decisions)
+npm run dev "тема" -- --debug
+
+# Create your personal Style Profile
+npm run dev init
+
+# Manage profiles
+npm run dev profile create competitor-alex
+npm run dev profile list
+npm run dev profile show competitor-alex
+npm run dev profile delete competitor-alex
+```
+
+## Multi-profile & Mix Mode
+
+**Reference profiles** let you capture the style of other authors (competitors, mentors):
+
+```bash
+npm run dev profile create competitor-alex
+# Paste their posts, get a reference profile
+```
+
+**Mix mode** combines your voice with their techniques:
+
+```bash
+npm run dev "пост про лідерство" -- --mix default competitor-alex
+```
+
+Rules: your tone + their hooks/closings/structure. The result sounds like you, but with their techniques.
+
+## Notion integration
+
+Optional. Add to `.env`:
+
+```
+NOTION_TOKEN=secret_...
+NOTION_DATABASE_ID=...
+```
+
+When configured, Ghostpen can:
+- **Read** Notion pages as source material: `npm run dev "пост на основі https://notion.so/page-id"`
+- **Save** drafts to your Notion content calendar (prompts after local save)
+
+Database properties: Title, Platform, Topic, Status (Draft), Created, Profile.
+
+When Notion is not configured, it works fully offline — no Notion mentions in the interface.
 
 ## Style Profile
 
@@ -92,32 +136,21 @@ The Style Profile is a JSON file that captures how you write:
 
 Profiles live in `data/profiles/`. Your personal profile evolves with feedback. Reference profiles (competitors, mentors) stay static unless you manually update them.
 
-## Notion integration
-
-Optional. Add to `.env`:
-
-```
-NOTION_TOKEN=secret_...
-NOTION_DATABASE_ID=...
-```
-
-Ghostpen can read Notion pages as source material and save drafts to your Notion content calendar.
-
 ## Project structure
 
 ```
 src/
 ├── index.ts           # CLI entry point
 ├── agent.ts           # Agent conversation loop
-├── prompts/           # System & task prompts
-├── tools/             # Agent tools (style profile, web search, Notion, etc.)
+├── commands/          # init, profile management
+├── prompts/           # System & task prompts, templates
+├── tools/             # Agent tools (save, search, Notion, feedback)
 ├── types/             # TypeScript types
-└── utils/             # Logger, config, helpers
+└── utils/             # Config, Notion helpers
 data/
 ├── profiles/          # Style profiles (JSON)
 ├── examples/          # Sample posts for analysis
 └── output/generated/  # Generated drafts (Markdown)
-docs/                  # Architecture, PRD, specs
 ```
 
 ## Tech stack

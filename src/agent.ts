@@ -6,6 +6,7 @@ import { FEEDBACK_RULES } from "./prompts/tasks/feedback-rules.js";
 import { readStyleProfile } from "./tools/style-profile.js";
 import { webSearchTool } from "./tools/search-web.js";
 import { MIX_MODE_TEMPLATE } from "./prompts/templates/mix-mode.js";
+import { isNotionConfigured } from "./utils/config.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -97,6 +98,20 @@ Web search: ЗАВЖДИ питай користувача перед пошук
 
 ФІДБЕК:
 ${FEEDBACK_RULES}`;
+
+const NOTION_PROMPT = `
+NOTION:
+Notion інтеграція налаштована. Ти маєш два додаткові інструменти:
+
+1. read_notion_page — читає Notion-сторінку за URL або ID.
+   Використовуй коли користувач дає посилання на Notion як джерело/нотатку.
+
+2. write_to_notion — зберігає пост в Notion database.
+   Після збереження локально через save_to_file, ЗАПИТАЙ користувача:
+   "📋 Зберегти також в Notion? (y/n)"
+   Якщо "y" або "так" — виклич write_to_notion.
+   Якщо "n" або "ні" — не зберігай.
+   При помилці Notion — файл вже збережено локально, повідом про це.`;
 
 const MODEL = "claude-sonnet-4-20250514";
 
@@ -201,6 +216,8 @@ const TOOL_SUMMARIES: Record<string, string> = {
   track_feedback: '{"summary":"feedback tracked"}',
   update_style_profile: '{"summary":"profile updated"}',
   read_past_posts: '{"summary":"past posts checked"}',
+  read_notion_page: '{"summary":"notion page read"}',
+  write_to_notion: '{"summary":"saved to notion"}',
 };
 
 function compressToolResults(messages: Anthropic.MessageParam[]): void {
@@ -238,8 +255,9 @@ function findToolName(
 
 export async function runAgent(
   userInput: string,
-  options?: { profile?: string; mix?: [string, string] },
+  options?: { profile?: string; mix?: [string, string]; debug?: boolean },
 ): Promise<void> {
+  const debug = options?.debug ?? false;
   const client = new Anthropic();
 
   console.log(chalk.bold("\n✍️  Ghostpen\n"));
@@ -319,8 +337,24 @@ export async function runAgent(
   // Add profile_used metadata to system prompt so model can pass it to save_to_file
   systemBlocks.push({
     type: "text",
-    text: `\nprofile_used: "${profileUsed}" — передавай це значення в save_to_file.`,
+    text: `\nprofile_used: "${profileUsed}" — передавай це значення в save_to_file та write_to_notion.`,
   });
+
+  // Add Notion instructions only when configured
+  if (isNotionConfigured()) {
+    systemBlocks.push({
+      type: "text",
+      text: NOTION_PROMPT,
+    });
+    if (debug) console.log(chalk.gray("[debug] Notion інтеграція активна"));
+  }
+
+  if (debug) {
+    console.log(chalk.gray(`[debug] Profile: ${profileUsed}`));
+    console.log(chalk.gray(`[debug] System blocks: ${systemBlocks.length}`));
+    console.log(chalk.gray(`[debug] Tools: ${toolDefinitions.map((t) => t.name).join(", ")}`));
+    console.log("");
+  }
 
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userInput },
@@ -380,7 +414,17 @@ export async function runAgent(
       });
       trackUsage(response);
 
+      if (debug) {
+        console.log(chalk.gray(`[debug] stop_reason: ${response.stop_reason}, blocks: ${response.content.length}`));
+      }
+
       if (response.stop_reason === "tool_use") {
+        if (debug) {
+          const toolNames = response.content
+            .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
+            .map((b) => b.name);
+          console.log(chalk.gray(`[debug] Tool calls: ${toolNames.join(", ")}`));
+        }
         const toolMessages = await handleToolCalls(response);
         messages.push(...toolMessages);
         // Compress tool results before next API call
@@ -428,7 +472,7 @@ export async function runAgent(
         while (true) {
           const saveResponse = await client.messages.create({
             model: MODEL,
-            max_tokens: 512,
+            max_tokens: 1024,
             system: systemBlocks,
             tools,
             messages,

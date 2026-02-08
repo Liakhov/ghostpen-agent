@@ -66,18 +66,21 @@ try {
       process.exit(1);
     }
   } else {
-    // Parse --profile and --mix flags from args
+    // Parse --profile, --mix, --debug flags from args
     const remaining: string[] = [];
     let profileName: string | undefined;
     let mixProfiles: [string, string] | undefined;
+    let debugMode = false;
 
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--profile" && i + 1 < args.length) {
         profileName = args[i + 1];
-        i++; // skip value
+        i++;
       } else if (args[i] === "--mix" && i + 2 < args.length) {
         mixProfiles = [args[i + 1], args[i + 2]];
-        i += 2; // skip both values
+        i += 2;
+      } else if (args[i] === "--debug") {
+        debugMode = true;
       } else {
         remaining.push(args[i]);
       }
@@ -89,18 +92,32 @@ try {
       process.exit(0);
     }
 
-    const options: { profile?: string; mix?: [string, string] } = {};
+    const options: { profile?: string; mix?: [string, string]; debug?: boolean } = {};
     if (mixProfiles) {
       options.mix = mixProfiles;
     } else if (profileName) {
       options.profile = profileName;
+    }
+    if (debugMode) {
+      options.debug = true;
     }
 
     await runAgent(input, Object.keys(options).length > 0 ? options : undefined);
   }
 } catch (error) {
   if (error instanceof Error) {
-    console.error(`Помилка: ${error.message}`);
+    // Friendly messages for common errors
+    if (error.message.includes("ANTHROPIC_API_KEY") || error.message.includes("authentication")) {
+      console.error("Помилка: ANTHROPIC_API_KEY не налаштований або невалідний. Перевір .env файл.");
+    } else if (error.message.includes("rate_limit") || error.message.includes("429")) {
+      console.error("Помилка: Перевищено ліміт запитів до API. Зачекай хвилину і спробуй ще.");
+    } else if (error.message.includes("ENOTFOUND") || error.message.includes("ECONNREFUSED")) {
+      console.error("Помилка: Немає з'єднання з інтернетом.");
+    } else if (error.message.includes("timeout") || error.message.includes("ETIMEDOUT")) {
+      console.error("Помилка: Запит завершився по таймауту. Спробуй ще раз.");
+    } else {
+      console.error(`Помилка: ${error.message}`);
+    }
   } else {
     console.error("Невідома помилка:", error);
   }
