@@ -91,6 +91,17 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
   });
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  read_style_profile: "📖 Читаю style profile...",
+  save_to_file: "💾 Зберігаю файл...",
+  search_web: "🔍 Шукаю в інтернеті...",
+  read_past_posts: "📚 Перевіряю минулі пости...",
+  read_notion_page: "📄 Читаю Notion-сторінку...",
+  write_to_notion: "📋 Зберігаю в Notion...",
+  track_feedback: "📝 Записую фідбек...",
+  update_style_profile: "🔄 Оновлюю profile...",
+};
+
 async function handleToolCalls(
   response: Anthropic.Message,
 ): Promise<Anthropic.MessageParam[]> {
@@ -99,7 +110,8 @@ async function handleToolCalls(
 
   for (const block of assistantContent) {
     if (block.type === "tool_use") {
-      console.log(chalk.dim(`  🔧 ${block.name}(${JSON.stringify(block.input)})`));
+      const label = TOOL_LABELS[block.name] ?? block.name;
+      console.log(chalk.dim(`  ${label}\n`));
 
       const handler = toolHandlers[block.name];
       if (!handler) {
@@ -116,6 +128,12 @@ async function handleToolCalls(
       }
 
       const result = await handler(block.input as Record<string, unknown>);
+      const res = result as Record<string, unknown>;
+
+      if (res.success === false) {
+        console.log(chalk.yellow(`  ⚠ ${res.message ?? "помилка"}`));
+      }
+
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
@@ -133,6 +151,8 @@ async function handleToolCalls(
 export async function runAgent(userInput: string): Promise<void> {
   const client = new Anthropic();
 
+  console.log(chalk.bold("\n✍️  Ghostpen\n"));
+
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userInput },
   ];
@@ -144,9 +164,14 @@ export async function runAgent(userInput: string): Promise<void> {
   }));
 
   const rl = createReadline();
+  let isFirstResponse = true;
 
   try {
     while (true) {
+      if (isFirstResponse) {
+        console.log(chalk.dim("  🧠 Думаю...\n"));
+      }
+
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: 4096,
@@ -161,12 +186,15 @@ export async function runAgent(userInput: string): Promise<void> {
         continue;
       }
 
+      isFirstResponse = false;
+
       const text = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === "text")
         .map((block) => block.text)
         .join("\n");
 
-      console.log("\n" + text + "\n");
+      console.log(chalk.dim("  ✏️  Генерую відповідь...\n"));
+      console.log(text + "\n");
 
       const feedback = await ask(
         rl,
@@ -174,7 +202,7 @@ export async function runAgent(userInput: string): Promise<void> {
       );
 
       if (["exit", "quit"].includes(feedback.toLowerCase())) {
-        console.log("\nЗавершено без збереження.");
+        console.log(chalk.dim("\n👋 Завершено без збереження."));
         break;
       }
 
@@ -182,6 +210,7 @@ export async function runAgent(userInput: string): Promise<void> {
       messages.push({ role: "user", content: feedback });
 
       if (["ok", "зберігай", "готово"].includes(feedback.toLowerCase())) {
+        console.log("");
         // Let agent call save_to_file, then finish
         while (true) {
           const saveResponse = await client.messages.create({
@@ -206,12 +235,14 @@ export async function runAgent(userInput: string): Promise<void> {
             .join("\n");
 
           if (saveText) {
-            console.log("\n" + saveText + "\n");
+            console.log(saveText + "\n");
           }
           break;
         }
         break;
       }
+
+      console.log(chalk.dim("\n  🔄 Переробляю...\n"));
     }
   } finally {
     rl.close();
