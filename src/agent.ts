@@ -3,6 +3,7 @@ import * as readline from "node:readline";
 import chalk from "chalk";
 import { toolDefinitions, toolHandlers } from "./tools/index.js";
 import { FEEDBACK_RULES } from "./prompts/tasks/feedback-rules.js";
+import { readStyleProfile } from "./tools/style-profile.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -22,8 +23,9 @@ const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 Якщо profile українською — пишеш українською.
 Якщо англійською — англійською.
 
-ОБОВ'ЯЗКОВО кожен раз перед генерацією:
-1. Прочитай Style Profile (read_style_profile)
+Style Profile автора завантажено нижче в system prompt.
+Використовуй його для кожної генерації. НЕ викликай read_style_profile — профіль вже тут.
+read_style_profile потрібен ТІЛЬКИ для mix mode (завантаження другого профілю).
 
 Style Profile — це закон. Не рекомендація.
 
@@ -150,19 +152,111 @@ async function handleToolCalls(
   ];
 }
 
+// --- Optimization helpers ---
+
+const MAX_HISTORY_PAIRS = 6; // keep last N user+assistant pairs (12 messages)
+
+/**
+ * #2: Trim old messages — keep first user message + last N pairs.
+ * Tool call/result pairs count as part of the exchange, not separate pairs.
+ */
+function trimMessages(messages: Anthropic.MessageParam[]): void {
+  // First message is always the original user request — keep it
+  const maxMessages = 1 + MAX_HISTORY_PAIRS * 2;
+  if (messages.length > maxMessages) {
+    const keep = messages.slice(-MAX_HISTORY_PAIRS * 2);
+    messages.length = 0;
+    messages.push({ role: "user", content: "[...попередня історія обрізана...]" });
+    messages.push(...keep);
+  }
+}
+
+/**
+ * #3: Compress tool results in history.
+ * After model has consumed a tool result, replace large JSON with a short summary.
+ */
+const TOOL_SUMMARIES: Record<string, string> = {
+  read_style_profile: '{"summary":"style profile loaded"}',
+  save_to_file: '{"summary":"file saved"}',
+  track_feedback: '{"summary":"feedback tracked"}',
+  update_style_profile: '{"summary":"profile updated"}',
+};
+
+function compressToolResults(messages: Anthropic.MessageParam[]): void {
+  for (const msg of messages) {
+    if (msg.role !== "user" || typeof msg.content === "string") continue;
+    const blocks = msg.content as Anthropic.ToolResultBlockParam[];
+    for (const block of blocks) {
+      if (block.type !== "tool_result" || typeof block.content !== "string")
+        continue;
+      // Only compress if content is large (>200 chars)
+      if (block.content.length <= 200) continue;
+      // Find matching tool name from preceding assistant message
+      const toolName = findToolName(messages, block.tool_use_id);
+      if (toolName && TOOL_SUMMARIES[toolName]) {
+        block.content = TOOL_SUMMARIES[toolName];
+      }
+    }
+  }
+}
+
+function findToolName(
+  messages: Anthropic.MessageParam[],
+  toolUseId: string,
+): string | undefined {
+  for (const msg of messages) {
+    if (msg.role !== "assistant" || typeof msg.content === "string") continue;
+    for (const block of msg.content as Anthropic.ContentBlock[]) {
+      if (block.type === "tool_use" && block.id === toolUseId) {
+        return block.name;
+      }
+    }
+  }
+  return undefined;
+}
+
 export async function runAgent(userInput: string): Promise<void> {
   const client = new Anthropic();
 
   console.log(chalk.bold("\n✍️  Ghostpen\n"));
 
+  // Load style profile once at startup → embed into system prompt
+  const profileResult = await readStyleProfile({ profile_name: "default" });
+  const profileData = (profileResult as { success: boolean; profile?: object })
+    .profile;
+  if (!profileData) {
+    console.log(
+      chalk.red(
+        "❌ Не вдалося завантажити style profile. Запусти ghostpen init.",
+      ),
+    );
+    return;
+  }
+
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral" },
+    },
+    {
+      type: "text",
+      text: `\n--- STYLE PROFILE (default) ---\n${JSON.stringify(profileData, null, 2)}`,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userInput },
   ];
 
-  const tools: Anthropic.Tool[] = toolDefinitions.map((t) => ({
+  const tools: Anthropic.Tool[] = toolDefinitions.map((t, i) => ({
     name: t.name,
     description: t.description,
     input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+    ...(i === toolDefinitions.length - 1 && {
+      cache_control: { type: "ephemeral" as const },
+    }),
   }));
 
   const rl = createReadline();
@@ -177,7 +271,7 @@ export async function runAgent(userInput: string): Promise<void> {
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: 4096,
-        system: SYSTEM_PROMPT,
+        system: systemBlocks,
         tools,
         messages,
       });
@@ -185,6 +279,8 @@ export async function runAgent(userInput: string): Promise<void> {
       if (response.stop_reason === "tool_use") {
         const toolMessages = await handleToolCalls(response);
         messages.push(...toolMessages);
+        // Compress tool results before next API call
+        compressToolResults(messages);
         continue;
       }
 
@@ -217,8 +313,8 @@ export async function runAgent(userInput: string): Promise<void> {
         while (true) {
           const saveResponse = await client.messages.create({
             model: MODEL,
-            max_tokens: 4096,
-            system: SYSTEM_PROMPT,
+            max_tokens: 512,
+            system: systemBlocks,
             tools,
             messages,
           });
@@ -243,6 +339,10 @@ export async function runAgent(userInput: string): Promise<void> {
         }
         break;
       }
+
+      // Optimize before next iteration
+      compressToolResults(messages);
+      trimMessages(messages);
 
       console.log(chalk.dim("\n  🔄 Переробляю...\n"));
     }

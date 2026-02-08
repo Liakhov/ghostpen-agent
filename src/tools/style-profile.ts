@@ -7,9 +7,9 @@ const PROFILES_DIR = path.resolve("data/profiles");
 export const readStyleProfileSchema = {
   name: "read_style_profile" as const,
   description:
-    "Читає Style Profile користувача з data/profiles/. " +
-    "ОБОВ'ЯЗКОВО викликай перед кожною генерацією контенту — без виключень. " +
-    "Для mix mode викликай двічі з різними profile_name.",
+    "Читає додатковий Style Profile з data/profiles/. " +
+    "Дефолтний профіль вже в system prompt — НЕ викликай для нього. " +
+    "Використовуй ТІЛЬКИ для mix mode (завантаження другого профілю).",
   input_schema: {
     type: "object" as const,
     properties: {
