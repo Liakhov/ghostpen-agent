@@ -4,6 +4,8 @@ import chalk from "chalk";
 import { toolDefinitions, toolHandlers } from "./tools/index.js";
 import { FEEDBACK_RULES } from "./prompts/tasks/feedback-rules.js";
 import { readStyleProfile } from "./tools/style-profile.js";
+import { webSearchTool } from "./tools/search-web.js";
+import { MIX_MODE_TEMPLATE } from "./prompts/templates/mix-mode.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -74,6 +76,24 @@ Style Profile — це закон. Не рекомендація.
 Коли користувач каже "ok", "зберігай", "готово" або щось подібне — виклич save_to_file з повним текстом поста, платформою і темою.
 Після збереження повідом користувача де збережено файл.
 Завжди зберігай. Це обов'язковий крок.
+
+РІШЕННЯ ПРО ПОШУК:
+Перед генерацією визнач чи потрібна додаткова інформація:
+
+1. WEB SEARCH — використовуй коли:
+   - Тема про тренди, новини, статистику, свіжі дані
+   - Потрібні конкретні факти, цифри, дати
+   - Пост про індустрію/ринок/технології
+   НЕ використовуй для: особисті історії, рефлексії, мотиваційні пости
+
+2. МИНУЛІ ПОСТИ (read_past_posts) — використовуй коли:
+   - Тема може перетинатися з попередніми постами
+   - Щоб НЕ повторювати те саме
+   - Для reference на попередній контент
+   НЕ використовуй для: зовсім нових тем де точно не було постів
+
+Web search: ЗАВЖДИ питай користувача перед пошуком. Наприклад: "Хочеш щоб я пошукав свіжу статистику по цій темі?"
+Минулі пости: перевіряй сам без питань.
 
 ФІДБЕК:
 ${FEEDBACK_RULES}`;
@@ -180,6 +200,7 @@ const TOOL_SUMMARIES: Record<string, string> = {
   save_to_file: '{"summary":"file saved"}',
   track_feedback: '{"summary":"feedback tracked"}',
   update_style_profile: '{"summary":"profile updated"}',
+  read_past_posts: '{"summary":"past posts checked"}',
 };
 
 function compressToolResults(messages: Anthropic.MessageParam[]): void {
@@ -215,49 +236,131 @@ function findToolName(
   return undefined;
 }
 
-export async function runAgent(userInput: string): Promise<void> {
+export async function runAgent(
+  userInput: string,
+  options?: { profile?: string; mix?: [string, string] },
+): Promise<void> {
   const client = new Anthropic();
 
   console.log(chalk.bold("\n✍️  Ghostpen\n"));
 
-  // Load style profile once at startup → embed into system prompt
-  const profileResult = await readStyleProfile({ profile_name: "default" });
-  const profileData = (profileResult as { success: boolean; profile?: object })
-    .profile;
-  if (!profileData) {
-    console.log(
-      chalk.red(
-        "❌ Не вдалося завантажити style profile. Запусти ghostpen init.",
-      ),
-    );
-    return;
-  }
-
+  // Determine which profile(s) to load
   const systemBlocks: Anthropic.TextBlockParam[] = [
     {
       type: "text",
       text: SYSTEM_PROMPT,
       cache_control: { type: "ephemeral" },
     },
-    {
-      type: "text",
-      text: `\n--- STYLE PROFILE (default) ---\n${JSON.stringify(profileData, null, 2)}`,
-      cache_control: { type: "ephemeral" },
-    },
   ];
+
+  let profileUsed: string;
+
+  if (options?.mix) {
+    const [baseName, refName] = options.mix;
+    const baseResult = await readStyleProfile({ profile_name: baseName });
+    const refResult = await readStyleProfile({ profile_name: refName });
+    const baseData = (baseResult as { success: boolean; profile?: object }).profile;
+    const refData = (refResult as { success: boolean; profile?: object }).profile;
+
+    if (!baseData) {
+      console.log(chalk.red(`❌ Не вдалося завантажити base профіль "${baseName}".`));
+      return;
+    }
+    if (!refData) {
+      console.log(chalk.red(`❌ Не вдалося завантажити reference профіль "${refName}".`));
+      return;
+    }
+
+    systemBlocks.push(
+      {
+        type: "text",
+        text: `\n--- BASE PROFILE ---\n${JSON.stringify(baseData, null, 2)}`,
+        cache_control: { type: "ephemeral" },
+      },
+      {
+        type: "text",
+        text: `\n--- REFERENCE PROFILE ---\n${JSON.stringify(refData, null, 2)}`,
+      },
+      {
+        type: "text",
+        text: `\n${MIX_MODE_TEMPLATE}`,
+        cache_control: { type: "ephemeral" },
+      },
+    );
+
+    profileUsed = `mix:${baseName}+${refName}`;
+    console.log(chalk.dim(`📎 Mix mode: ${baseName} + ${refName}\n`));
+  } else {
+    const profileName = options?.profile ?? "default";
+    const profileResult = await readStyleProfile({ profile_name: profileName });
+    const profileData = (profileResult as { success: boolean; profile?: object }).profile;
+
+    if (!profileData) {
+      console.log(
+        chalk.red(
+          `❌ Не вдалося завантажити style profile "${profileName}". Запусти ghostpen init.`,
+        ),
+      );
+      return;
+    }
+
+    systemBlocks.push({
+      type: "text",
+      text: `\n--- STYLE PROFILE (${profileName}) ---\n${JSON.stringify(profileData, null, 2)}`,
+      cache_control: { type: "ephemeral" },
+    });
+
+    profileUsed = profileName;
+    if (profileName !== "default") {
+      console.log(chalk.dim(`📎 Профіль: ${profileName}\n`));
+    }
+  }
+
+  // Add profile_used metadata to system prompt so model can pass it to save_to_file
+  systemBlocks.push({
+    type: "text",
+    text: `\nprofile_used: "${profileUsed}" — передавай це значення в save_to_file.`,
+  });
 
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userInput },
   ];
 
-  const tools: Anthropic.Tool[] = toolDefinitions.map((t, i) => ({
-    name: t.name,
-    description: t.description,
-    input_schema: t.input_schema as Anthropic.Tool.InputSchema,
-    ...(i === toolDefinitions.length - 1 && {
-      cache_control: { type: "ephemeral" as const },
-    }),
-  }));
+  const tools: Anthropic.Messages.ToolUnion[] = [
+    webSearchTool,
+    ...toolDefinitions.map((t, i) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+      ...(i === toolDefinitions.length - 1 && {
+        cache_control: { type: "ephemeral" as const },
+      }),
+    })),
+  ];
+
+  const usage = { input: 0, output: 0, cache_write: 0, cache_read: 0 };
+
+  function trackUsage(response: Anthropic.Message): void {
+    usage.input += response.usage.input_tokens;
+    usage.output += response.usage.output_tokens;
+    const u = response.usage as unknown as Record<string, number>;
+    usage.cache_write += u.cache_creation_input_tokens ?? 0;
+    usage.cache_read += u.cache_read_input_tokens ?? 0;
+  }
+
+  function printUsage(): void {
+    const total = usage.input + usage.output;
+    const saved = usage.cache_read;
+    console.log(
+      chalk.dim(
+        `\n📊 Tokens: ${total} total (in: ${usage.input}, out: ${usage.output}) | ` +
+          `Cache: ${usage.cache_read} read, ${usage.cache_write} write` +
+          (saved > 0
+            ? ` | Saved ~${Math.round((saved / (usage.input + saved)) * 100)}% input via cache`
+            : ""),
+      ),
+    );
+  }
 
   const rl = createReadline();
   let isFirstResponse = true;
@@ -275,6 +378,7 @@ export async function runAgent(userInput: string): Promise<void> {
         tools,
         messages,
       });
+      trackUsage(response);
 
       if (response.stop_reason === "tool_use") {
         const toolMessages = await handleToolCalls(response);
@@ -286,6 +390,14 @@ export async function runAgent(userInput: string): Promise<void> {
 
       isFirstResponse = false;
 
+      // Log server tool usage (web search)
+      for (const block of response.content) {
+        if (block.type === "server_tool_use") {
+          const query = (block.input as { query?: string })?.query ?? "";
+          console.log(chalk.dim(`🔍 Шукаю: "${query}"\n`));
+        }
+      }
+
       const text = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === "text")
         .map((block) => block.text)
@@ -294,10 +406,13 @@ export async function runAgent(userInput: string): Promise<void> {
       console.log(chalk.dim("  ✏️  Генерую відповідь...\n"));
       console.log(text + "\n");
 
-      const feedback = await ask(
-        rl,
-        'Що змінити? (або "ok" щоб зберегти)\n> ',
-      );
+      let feedback = "";
+      while (!feedback) {
+        feedback = await ask(
+          rl,
+          'Що змінити? (або "ok" щоб зберегти)\n> ',
+        );
+      }
 
       if (["exit", "quit"].includes(feedback.toLowerCase())) {
         console.log(chalk.dim("\n👋 Завершено без збереження."));
@@ -318,6 +433,7 @@ export async function runAgent(userInput: string): Promise<void> {
             tools,
             messages,
           });
+          trackUsage(saveResponse);
 
           if (saveResponse.stop_reason === "tool_use") {
             const toolMessages = await handleToolCalls(saveResponse);
@@ -347,6 +463,7 @@ export async function runAgent(userInput: string): Promise<void> {
       console.log(chalk.dim("\n  🔄 Переробляю...\n"));
     }
   } finally {
+    printUsage();
     rl.close();
   }
 }

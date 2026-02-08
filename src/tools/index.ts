@@ -8,12 +8,17 @@ import {
   updateStyleProfile,
   updateStyleProfileSchema,
 } from "./update-style-profile.js";
+import {
+  readPastPosts,
+  readPastPostsSchema,
+} from "./read-past-posts.js";
 
 export const toolDefinitions = [
   readStyleProfileSchema,
   saveToFileSchema,
   trackFeedbackSchema,
   updateStyleProfileSchema,
+  readPastPostsSchema,
 ];
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<object>;
@@ -23,4 +28,5 @@ export const toolHandlers: Record<string, ToolHandler> = {
   save_to_file: saveToFile as ToolHandler,
   track_feedback: trackFeedback as ToolHandler,
   update_style_profile: updateStyleProfile as ToolHandler,
+  read_past_posts: readPastPosts as ToolHandler,
 };

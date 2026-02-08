@@ -25,7 +25,7 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
   });
 }
 
-async function readMultilineInput(rl: readline.Interface): Promise<string> {
+export async function readMultilineInput(rl: readline.Interface): Promise<string> {
   console.log(
     chalk.dim("(Встав пости, розділяючи їх рядком ---. Двічі Enter для завершення)\n"),
   );
@@ -52,7 +52,7 @@ async function readMultilineInput(rl: readline.Interface): Promise<string> {
   });
 }
 
-function parsePosts(raw: string): string[] {
+export function parsePosts(raw: string): string[] {
   return raw
     .split(/\n---\n/)
     .map((p) => p.trim())
@@ -66,7 +66,7 @@ function extractText(response: Anthropic.Message): string {
     .join("\n");
 }
 
-function extractJson(text: string): string {
+export function extractJson(text: string): string {
   // Try to find JSON in markdown code blocks first
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (codeBlockMatch?.[1]) {
@@ -80,7 +80,7 @@ function extractJson(text: string): string {
   return text;
 }
 
-function validateProfile(data: unknown): data is StyleProfile {
+export function validateProfile(data: unknown): data is StyleProfile {
   const p = data as Record<string, unknown>;
   if (!p || typeof p !== "object") return false;
   if (typeof p.profile_name !== "string") return false;
@@ -101,7 +101,7 @@ function validateProfile(data: unknown): data is StyleProfile {
   return true;
 }
 
-function formatSummary(profile: StyleProfile): string {
+export function formatSummary(profile: StyleProfile): string {
   const v = profile.voice;
   const platforms = Object.keys(profile.platforms).join(", ");
 
