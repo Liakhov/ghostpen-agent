@@ -7,6 +7,7 @@ import { readStyleProfile } from "./tools/style-profile.js";
 import { webSearchTool } from "./tools/search-web.js";
 import { MIX_MODE_TEMPLATE } from "./prompts/templates/mix-mode.js";
 import { isNotionConfigured } from "./utils/config.js";
+import { SessionLogger } from "./utils/logger.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -114,6 +115,24 @@ Notion інтеграція налаштована. Ти маєш два дод�
    При помилці Notion — файл вже збережено локально, повідом про це.`;
 
 const MODEL = "claude-sonnet-4-20250514";
+
+// Pricing per million tokens (USD)
+const PRICING: Record<string, { input: number; cache_write: number; cache_read: number; output: number }> = {
+  "claude-sonnet-4-20250514": { input: 3, cache_write: 3.75, cache_read: 0.30, output: 15 },
+  "claude-sonnet-4": { input: 3, cache_write: 3.75, cache_read: 0.30, output: 15 },
+  "claude-haiku-4-5": { input: 1, cache_write: 1.25, cache_read: 0.10, output: 5 },
+  "claude-opus-4-6": { input: 5, cache_write: 6.25, cache_read: 0.50, output: 25 },
+};
+
+function calculateCost(u: { input: number; output: number; cache_write: number; cache_read: number }): number {
+  const p = PRICING[MODEL] ?? PRICING["claude-sonnet-4-20250514"];
+  return (
+    (u.input * p.input +
+      u.cache_write * p.cache_write +
+      u.cache_read * p.cache_read +
+      u.output * p.output) / 1_000_000
+  );
+}
 
 function createReadline(): readline.Interface {
   return readline.createInterface({
@@ -356,6 +375,8 @@ export async function runAgent(
     console.log("");
   }
 
+  const logger = new SessionLogger(userInput, profileUsed, isNotionConfigured());
+
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: userInput },
   ];
@@ -385,13 +406,15 @@ export async function runAgent(
   function printUsage(): void {
     const total = usage.input + usage.output;
     const saved = usage.cache_read;
+    const cost = calculateCost(usage);
     console.log(
       chalk.dim(
         `\n📊 Tokens: ${total} total (in: ${usage.input}, out: ${usage.output}) | ` +
           `Cache: ${usage.cache_read} read, ${usage.cache_write} write` +
           (saved > 0
-            ? ` | Saved ~${Math.round((saved / (usage.input + saved)) * 100)}% input via cache`
-            : ""),
+            ? ` | Saved ~${Math.round((saved / (usage.input + saved)) * 100)}% via cache`
+            : "") +
+          ` | 💰 $${cost.toFixed(4)}`,
       ),
     );
   }
@@ -413,18 +436,26 @@ export async function runAgent(
         messages,
       });
       trackUsage(response);
+      logger.event("api_call", {
+        stop_reason: response.stop_reason,
+        usage: {
+          input: response.usage.input_tokens,
+          output: response.usage.output_tokens,
+        },
+      });
 
       if (debug) {
         console.log(chalk.gray(`[debug] stop_reason: ${response.stop_reason}, blocks: ${response.content.length}`));
       }
 
       if (response.stop_reason === "tool_use") {
+        const toolNames = response.content
+          .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
+          .map((b) => b.name);
         if (debug) {
-          const toolNames = response.content
-            .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
-            .map((b) => b.name);
           console.log(chalk.gray(`[debug] Tool calls: ${toolNames.join(", ")}`));
         }
+        logger.event("tool_call", { tools: toolNames });
         const toolMessages = await handleToolCalls(response);
         messages.push(...toolMessages);
         // Compress tool results before next API call
@@ -447,6 +478,8 @@ export async function runAgent(
         .map((block) => block.text)
         .join("\n");
 
+      logger.event("assistant_text", { length: text.length, preview: text.slice(0, 200) });
+
       console.log(chalk.dim("  ✏️  Генерую відповідь...\n"));
       console.log(text + "\n");
 
@@ -457,6 +490,8 @@ export async function runAgent(
           'Що змінити? (або "ok" щоб зберегти)\n> ',
         );
       }
+
+      logger.event("user_feedback", { feedback });
 
       if (["exit", "quit"].includes(feedback.toLowerCase())) {
         console.log(chalk.dim("\n👋 Завершено без збереження."));
@@ -478,6 +513,14 @@ export async function runAgent(
             messages,
           });
           trackUsage(saveResponse);
+          logger.event("api_call", {
+            phase: "save",
+            stop_reason: saveResponse.stop_reason,
+            usage: {
+              input: saveResponse.usage.input_tokens,
+              output: saveResponse.usage.output_tokens,
+            },
+          });
 
           if (saveResponse.stop_reason === "tool_use") {
             const toolMessages = await handleToolCalls(saveResponse);
@@ -508,6 +551,9 @@ export async function runAgent(
     }
   } finally {
     printUsage();
+    logger.updateUsage(usage);
+    const logPath = await logger.flush();
+    console.log(chalk.dim(`📋 Лог: ${logPath}`));
     rl.close();
   }
 }
