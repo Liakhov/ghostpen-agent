@@ -551,7 +551,7 @@ export async function runAgent(
     }
   } finally {
     printUsage();
-    logger.updateUsage(usage);
+    logger.updateUsage(usage, calculateCost(usage));
     const logPath = await logger.flush();
     console.log(chalk.dim(`📋 Лог: ${logPath}`));
     rl.close();

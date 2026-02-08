@@ -61,8 +61,11 @@ export class SessionLogger {
     this.log.events.push({ timestamp: ts(), type, data });
   }
 
-  updateUsage(usage: TokenUsage): void {
+  updateUsage(usage: TokenUsage, costUsd?: number): void {
     this.log.usage = { ...usage };
+    if (costUsd !== undefined) {
+      this.log.cost_usd = costUsd;
+    }
   }
 
   async flush(): Promise<string> {
