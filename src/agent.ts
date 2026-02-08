@@ -132,6 +132,12 @@ export async function runAgent(userInput: string): Promise<void> {
     { role: "user", content: userInput },
   ];
 
+  const tools: Anthropic.Tool[] = toolDefinitions.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+  }));
+
   const rl = createReadline();
 
   try {
@@ -140,8 +146,15 @@ export async function runAgent(userInput: string): Promise<void> {
         model: MODEL,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
+        tools,
         messages,
       });
+
+      if (response.stop_reason === "tool_use") {
+        const toolMessages = await handleToolCalls(response);
+        messages.push(...toolMessages);
+        continue;
+      }
 
       const text = response.content
         .filter((block): block is Anthropic.TextBlock => block.type === "text")
@@ -150,14 +163,17 @@ export async function runAgent(userInput: string): Promise<void> {
 
       console.log("\n" + text + "\n");
 
-      const feedback = await ask(rl, "Що змінити? (або \"ok\" щоб зберегти)\n> ");
+      const feedback = await ask(
+        rl,
+        'Що змінити? (або "ok" щоб зберегти)\n> ',
+      );
 
       if (["ok", "exit", "quit"].includes(feedback.toLowerCase())) {
         console.log("\nЗавершено.");
         break;
       }
 
-      messages.push({ role: "assistant", content: text });
+      messages.push({ role: "assistant", content: response.content });
       messages.push({ role: "user", content: feedback });
     }
   } finally {
