@@ -5,10 +5,9 @@ import * as readline from "node:readline";
 import chalk from "chalk";
 import { buildAnalyzePrompt } from "../prompts/tasks/analyze-style.js";
 import { buildCreateProfilePrompt } from "../prompts/tasks/create-profile.js";
+import { MODEL } from "../constants/app.js";
+import { PROFILES_DIR } from "../constants/paths.js";
 import type { StyleProfile } from "../types/style-profile.js";
-
-const MODEL = "claude-sonnet-4-20250514";
-const PROFILES_DIR = path.resolve("data/profiles");
 
 function createReadline(): readline.Interface {
   return readline.createInterface({

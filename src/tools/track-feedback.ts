@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-const TRACKER_PATH = path.resolve("data/feedback-tracker.json");
+import { TRACKER_PATH } from "../constants/paths.js";
 const THRESHOLD = 3;
 const MAX_HISTORY = 10;
 

@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-const OUTPUT_DIR = path.resolve("data/output/generated");
+import { OUTPUT_DIR } from "../constants/paths.js";
 
 const CYRILLIC_MAP: Record<string, string> = {
   а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ye",

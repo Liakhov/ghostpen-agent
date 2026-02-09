@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-const LOGS_DIR = path.resolve("data/output/logs");
+import { LOGS_DIR } from "../constants/paths.js";
 
 export interface SessionLog {
   session_id: string;

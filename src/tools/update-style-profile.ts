@@ -1,8 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { StyleProfile } from "../types/style-profile.js";
-
-const PROFILES_DIR = path.resolve("data/profiles");
+import { PROFILES_DIR } from "../constants/paths.js";
 
 const IMMUTABLE_FIELDS = new Set([
   "profile_name",

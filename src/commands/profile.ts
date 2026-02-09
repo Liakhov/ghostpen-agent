@@ -14,8 +14,8 @@ import {
   formatSummary,
 } from "./init.js";
 
-const MODEL = "claude-sonnet-4-20250514";
-const PROFILES_DIR = path.resolve("data/profiles");
+import { MODEL } from "../constants/app.js";
+import { PROFILES_DIR } from "../constants/paths.js";
 
 function createReadline(): readline.Interface {
   return readline.createInterface({

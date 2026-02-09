@@ -2,138 +2,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import * as readline from "node:readline";
 import chalk from "chalk";
 import { toolDefinitions, toolHandlers } from "./tools/index.js";
-import { FEEDBACK_RULES } from "./prompts/tasks/feedback-rules.js";
 import { readStyleProfile } from "./tools/style-profile.js";
 import { webSearchTool } from "./tools/search-web.js";
 import { MIX_MODE_TEMPLATE } from "./prompts/templates/mix-mode.js";
+import { SYSTEM_PROMPT, NOTION_PROMPT } from "./prompts/system.js";
+import { MODEL, MAX_HISTORY_PAIRS, TOOL_LABELS, TOOL_SUMMARIES } from "./constants/app.js";
+import { calculateCost } from "./utils/pricing.js";
 import { isNotionConfigured } from "./utils/config.js";
 import { SessionLogger } from "./utils/logger.js";
 import { saveToFile } from "./tools/save-to-file.js";
 
-const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
-
-Твоя місія: писати контент який звучить як автор, не як AI.
-
-Ти працюєш так:
-- Користувач каже ЩО написати
-- Ти вирішуєш ЯК це зробити
-- Ти завжди спираєшся на Style Profile автора
-
-Ти НЕ:
-- Генератор шаблонів
-- Чатбот для розмов
-- SEO-інструмент
-
-Ти говориш тією ж мовою, якою написаний Style Profile.
-Якщо profile українською — пишеш українською.
-Якщо англійською — англійською.
-
-Style Profile автора завантажено нижче в system prompt.
-Використовуй його для кожної генерації. НЕ викликай read_style_profile — профіль вже тут.
-read_style_profile потрібен ТІЛЬКИ для mix mode (завантаження другого профілю).
-
-Style Profile — це закон. Не рекомендація.
-
-Коли ти отримав профіль:
-
-1. TONE: Кожне речення має відповідати voice.tone.
-   Якщо tone = "іронічний" — не пиши серйозно-мотиваційно.
-
-2. AVOID: Перед видачею тексту перевір кожен пункт voice.avoid.
-   Якщо в avoid є "канцеляризми" і ти написав "в рамках" — перепиши.
-
-3. HOOKS: Обирай hook з voice.hooks. Не вигадуй нових типів.
-   Якщо перший в списку "провокативне твердження" — це пріоритетний hook.
-
-4. STRUCTURE: Дотримуйся platforms[platform].structure точно.
-   Якщо structure = "hook → story → insight → CTA" — не міняй порядок.
-
-5. LENGTH: Ніколи не перевищуй platforms[platform].max_length.
-   Краще коротше ніж довше.
-
-6. SIGNATURE PHRASES: Використовуй 1-2 з voice.signature_phrases природно.
-   Не впихуй всі. Не в кожен пост. Тільки де органічно.
-
-7. EXAMPLES: Перед генерацією перечитай examples для цієї платформи.
-   Твій текст має бути на тому ж рівні якості і в тому ж дусі.
-
-Якщо ти не впевнений — перечитай examples ще раз.
-Вони — золотий стандарт.
-
-Формат відповіді при генерації:
-
-1. Коротко (1 рядок) що ти зробив:
-   "Прочитав профіль, генерую для LinkedIn"
-
-2. Чернетка поста — чистий текст, без коментарів, без markdown headers.
-   Пост має виглядати ТОЧНО так, як буде опублікований.
-
-Чого НЕ робити:
-- Не додавай "## Ось ваш пост:" перед текстом
-- Не коментуй свій вибір ("Я обрав цей hook тому що...")
-- Не пропонуй альтернативи без запиту
-- Не додавай disclaimer "це AI-контент"
-- Не пиши "---" лінії між секціями поста якщо цього немає в профілі
-
-ЗБЕРЕЖЕННЯ:
-Коли користувач каже "ok", "зберігай", "готово" або щось подібне — виклич save_to_file з повним текстом поста, платформою і темою.
-Після збереження повідом користувача де збережено файл.
-Завжди зберігай. Це обов'язковий крок.
-
-РІШЕННЯ ПРО ПОШУК:
-Перед генерацією визнач чи потрібна додаткова інформація:
-
-1. WEB SEARCH — використовуй коли:
-   - Тема про тренди, новини, статистику, свіжі дані
-   - Потрібні конкретні факти, цифри, дати
-   - Пост про індустрію/ринок/технології
-   НЕ використовуй для: особисті історії, рефлексії, мотиваційні пости
-
-2. МИНУЛІ ПОСТИ (read_past_posts) — використовуй коли:
-   - Тема може перетинатися з попередніми постами
-   - Щоб НЕ повторювати те саме
-   - Для reference на попередній контент
-   НЕ використовуй для: зовсім нових тем де точно не було постів
-
-Web search: ЗАВЖДИ питай користувача перед пошуком. Наприклад: "Хочеш щоб я пошукав свіжу статистику по цій темі?"
-Минулі пости: перевіряй сам без питань.
-
-ФІДБЕК:
-${FEEDBACK_RULES}`;
-
-const NOTION_PROMPT = `
-NOTION:
-Notion інтеграція налаштована. Ти маєш два додаткові інструменти:
-
-1. read_notion_page — читає Notion-сторінку за URL або ID.
-   Використовуй коли користувач дає посилання на Notion як джерело/нотатку.
-
-2. write_to_notion — зберігає пост в Notion database.
-   Після збереження локально через save_to_file, ЗАПИТАЙ користувача:
-   "📋 Зберегти також в Notion? (y/n)"
-   Якщо "y" або "так" — виклич write_to_notion.
-   Якщо "n" або "ні" — не зберігай.
-   При помилці Notion — файл вже збережено локально, повідом про це.`;
-
-const MODEL = "claude-sonnet-4-20250514";
-
-// Pricing per million tokens (USD)
-const PRICING: Record<string, { input: number; cache_write: number; cache_read: number; output: number }> = {
-  "claude-sonnet-4-20250514": { input: 3, cache_write: 3.75, cache_read: 0.30, output: 15 },
-  "claude-sonnet-4": { input: 3, cache_write: 3.75, cache_read: 0.30, output: 15 },
-  "claude-haiku-4-5": { input: 1, cache_write: 1.25, cache_read: 0.10, output: 5 },
-  "claude-opus-4-6": { input: 5, cache_write: 6.25, cache_read: 0.50, output: 25 },
-};
-
-function calculateCost(u: { input: number; output: number; cache_write: number; cache_read: number }): number {
-  const p = PRICING[MODEL] ?? PRICING["claude-sonnet-4-20250514"];
-  return (
-    (u.input * p.input +
-      u.cache_write * p.cache_write +
-      u.cache_read * p.cache_read +
-      u.output * p.output) / 1_000_000
-  );
-}
 
 function createReadline(): readline.Interface {
   return readline.createInterface({
@@ -182,16 +60,6 @@ function extractDefaultPlatform(profile: object | undefined): string {
   return "linkedin";
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  read_style_profile: "📖 Читаю style profile...",
-  save_to_file: "💾 Зберігаю файл...",
-  search_web: "🔍 Шукаю в інтернеті...",
-  read_past_posts: "📚 Перевіряю минулі пости...",
-  read_notion_page: "📄 Читаю Notion-сторінку...",
-  write_to_notion: "📋 Зберігаю в Notion...",
-  track_feedback: "📝 Записую фідбек...",
-  update_style_profile: "🔄 Оновлюю profile...",
-};
 
 async function handleToolCalls(
   response: Anthropic.Message,
@@ -241,7 +109,6 @@ async function handleToolCalls(
 
 // --- Optimization helpers ---
 
-const MAX_HISTORY_PAIRS = 6; // keep last N user+assistant pairs (12 messages)
 
 /**
  * #2: Trim old messages — keep first user message + last N pairs.
@@ -262,15 +129,6 @@ function trimMessages(messages: Anthropic.MessageParam[]): void {
  * #3: Compress tool results in history.
  * After model has consumed a tool result, replace large JSON with a short summary.
  */
-const TOOL_SUMMARIES: Record<string, string> = {
-  read_style_profile: '{"summary":"style profile loaded"}',
-  save_to_file: '{"summary":"file saved"}',
-  track_feedback: '{"summary":"feedback tracked"}',
-  update_style_profile: '{"summary":"profile updated"}',
-  read_past_posts: '{"summary":"past posts checked"}',
-  read_notion_page: '{"summary":"notion page read"}',
-  write_to_notion: '{"summary":"saved to notion"}',
-};
 
 function compressToolResults(messages: Anthropic.MessageParam[]): void {
   for (const msg of messages) {

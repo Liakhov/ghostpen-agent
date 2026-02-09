@@ -1,7 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-const GENERATED_DIR = path.resolve("data/output/generated");
+import { OUTPUT_DIR } from "../constants/paths.js";
 
 export const readPastPostsSchema = {
   name: "read_past_posts" as const,
@@ -71,7 +70,7 @@ export async function readPastPosts(input: {
   const { keywords, platform, limit = 5 } = input;
 
   try {
-    const files = await fs.readdir(GENERATED_DIR);
+    const files = await fs.readdir(OUTPUT_DIR);
     const mdFiles = files.filter((f) => f.endsWith(".md"));
 
     if (mdFiles.length === 0) {
@@ -88,7 +87,7 @@ export async function readPastPosts(input: {
     const lowerKeywords = keywords.map((k) => k.toLowerCase());
 
     for (const file of mdFiles) {
-      const raw = await fs.readFile(path.join(GENERATED_DIR, file), "utf-8");
+      const raw = await fs.readFile(path.join(OUTPUT_DIR, file), "utf-8");
       const parsed = parseFrontmatter(raw);
       if (!parsed) continue;
 
