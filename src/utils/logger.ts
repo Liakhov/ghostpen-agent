@@ -17,7 +17,7 @@ export interface SessionLog {
 
 export interface LogEvent {
   timestamp: string;
-  type: "api_call" | "tool_call" | "tool_result" | "assistant_text" | "user_feedback" | "error";
+  type: "api_call" | "tool_call" | "tool_result" | "assistant_text" | "user_feedback" | "error" | "save";
   data: Record<string, unknown>;
 }
 

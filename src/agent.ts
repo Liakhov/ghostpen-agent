@@ -8,6 +8,7 @@ import { webSearchTool } from "./tools/search-web.js";
 import { MIX_MODE_TEMPLATE } from "./prompts/templates/mix-mode.js";
 import { isNotionConfigured } from "./utils/config.js";
 import { SessionLogger } from "./utils/logger.js";
+import { saveToFile } from "./tools/save-to-file.js";
 
 const SYSTEM_PROMPT = `Ти — Ghostpen, персональний ghostwriter.
 
@@ -147,6 +148,38 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
       resolve(answer.trim());
     });
   });
+}
+
+function extractTopic(input: string): string {
+  return input
+    .replace(/^(напиши|створи|згенеруй|зроби|write|create|generate|make)\s+(пост|допис|тред|статтю|текст|post|thread|article)\s+(про|на тему|about)\s+/i, "")
+    .trim();
+}
+
+/**
+ * Strip the model's preamble line (e.g. "Прочитав профіль, генерую для LinkedIn.")
+ * The system prompt instructs the model to output a 1-line summary first,
+ * followed by a blank line, then the actual post.
+ */
+function stripPreamble(text: string): string {
+  const idx = text.indexOf("\n\n");
+  if (idx === -1) return text;
+  const firstLine = text.slice(0, idx);
+  // Only strip if it looks like a preamble (short, contains keywords)
+  if (firstLine.length < 200 && /профіль|генерую|profile|generating/i.test(firstLine)) {
+    return text.slice(idx + 2);
+  }
+  return text;
+}
+
+function extractDefaultPlatform(profile: object | undefined): string {
+  if (!profile || typeof profile !== "object") return "linkedin";
+  const p = profile as Record<string, unknown>;
+  if (p.platforms && typeof p.platforms === "object") {
+    const platforms = Object.keys(p.platforms as object);
+    if (platforms.length > 0) return platforms[0];
+  }
+  return "linkedin";
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -291,6 +324,7 @@ export async function runAgent(
   ];
 
   let profileUsed: string;
+  let defaultPlatform = "linkedin";
 
   if (options?.mix) {
     const [baseName, refName] = options.mix;
@@ -307,6 +341,8 @@ export async function runAgent(
       console.log(chalk.red(`❌ Не вдалося завантажити reference профіль "${refName}".`));
       return;
     }
+
+    defaultPlatform = extractDefaultPlatform(baseData);
 
     systemBlocks.push(
       {
@@ -340,6 +376,8 @@ export async function runAgent(
       );
       return;
     }
+
+    defaultPlatform = extractDefaultPlatform(profileData);
 
     systemBlocks.push({
       type: "text",
@@ -503,43 +541,44 @@ export async function runAgent(
 
       if (["ok", "зберігай", "готово"].includes(feedback.toLowerCase())) {
         console.log("");
-        // Let agent call save_to_file, then finish
-        while (true) {
-          const saveResponse = await client.messages.create({
-            model: MODEL,
-            max_tokens: 1024,
-            system: systemBlocks,
-            tools,
-            messages,
-          });
-          trackUsage(saveResponse);
-          logger.event("api_call", {
-            phase: "save",
-            stop_reason: saveResponse.stop_reason,
-            usage: {
-              input: saveResponse.usage.input_tokens,
-              output: saveResponse.usage.output_tokens,
-            },
-          });
-
-          if (saveResponse.stop_reason === "tool_use") {
-            const toolMessages = await handleToolCalls(saveResponse);
-            messages.push(...toolMessages);
-            continue;
-          }
-
-          const saveText = saveResponse.content
-            .filter(
-              (block): block is Anthropic.TextBlock => block.type === "text",
-            )
-            .map((block) => block.text)
-            .join("\n");
-
-          if (saveText) {
-            console.log(saveText + "\n");
-          }
-          break;
+        // Save directly without API call
+        const saveResult = await saveToFile({
+          content: stripPreamble(text),
+          platform: defaultPlatform,
+          topic: extractTopic(userInput),
+          profile_used: profileUsed,
+        });
+        const sr = saveResult as { success: boolean; file_path?: string };
+        if (sr.success) {
+          console.log(chalk.green(`💾 Збережено: ${sr.file_path}`) + "\n");
+        } else {
+          console.log(chalk.red("❌ Помилка збереження\n"));
         }
+        logger.event("save", { direct: true, ...sr });
+
+        // Notion integration (if configured)
+        if (isNotionConfigured()) {
+          const notionAnswer = await ask(rl, "📋 Зберегти також в Notion? (y/n)\n> ");
+          if (["y", "так", "yes"].includes(notionAnswer.toLowerCase())) {
+            const notionHandler = toolHandlers.write_to_notion;
+            if (notionHandler) {
+              console.log(chalk.dim("📋 Зберігаю в Notion...\n"));
+              const notionResult = await notionHandler({
+                content: stripPreamble(text),
+                platform: defaultPlatform,
+                topic: extractTopic(userInput),
+                profile_used: profileUsed,
+              });
+              const nr = notionResult as { success: boolean; url?: string; message?: string };
+              if (nr.success) {
+                console.log(chalk.green(`📋 Збережено в Notion: ${nr.url}\n`));
+              } else {
+                console.log(chalk.yellow(`⚠ ${nr.message ?? "Notion помилка"}\n`));
+              }
+            }
+          }
+        }
+
         break;
       }
 
