@@ -7,8 +7,6 @@ export const TOOL_LABELS: Record<string, string> = {
   save_to_file: "💾 Зберігаю файл...",
   search_web: "🔍 Шукаю в інтернеті...",
   read_past_posts: "📚 Перевіряю минулі пости...",
-  read_notion_page: "📄 Читаю Notion-сторінку...",
-  write_to_notion: "📋 Зберігаю в Notion...",
   track_feedback: "📝 Записую фідбек...",
   update_style_profile: "🔄 Оновлюю profile...",
 };
@@ -19,6 +17,4 @@ export const TOOL_SUMMARIES: Record<string, string> = {
   track_feedback: '{"summary":"feedback tracked"}',
   update_style_profile: '{"summary":"profile updated"}',
   read_past_posts: '{"summary":"past posts checked"}',
-  read_notion_page: '{"summary":"notion page read"}',
-  write_to_notion: '{"summary":"saved to notion"}',
 };

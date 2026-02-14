@@ -4,7 +4,7 @@
 
 Ghostpen — автономний AI-агент, побудований на Claude API. Агент сам обирає послідовність дій для кожного запиту. Розробник задає tools і system prompt, Claude вирішує коли і як їх використовувати.
 
-Архітектура навмисно проста: Node.js процес, який спілкується з Claude API і має доступ до файлової системи та Notion. Без черг, без мікросервісів, без бази даних. Стан зберігається у файлах.
+Архітектура навмисно проста: Node.js процес, який спілкується з Claude API і має доступ до файлової системи. Без черг, без мікросервісів, без бази даних. Стан зберігається у файлах.
 
 ---
 
@@ -40,10 +40,10 @@ Ghostpen — автономний AI-агент, побудований на Cla
                        │
           ┌────────────┼────────────┐
           ▼            ▼            ▼
-    ┌──────────┐ ┌──────────┐ ┌──────────┐
-    │  Local   │ │  Notion  │ │   Web    │
-    │  Files   │ │   API    │ │  Search  │
-    └──────────┘ └──────────┘ └──────────┘
+    ┌──────────┐   ┌──────────┐
+    │  Local   │   │   Web    │
+    │  Files   │   │  Search  │
+    └──────────┘   └──────────┘
 ```
 
 ---
@@ -71,9 +71,6 @@ User: "напиши пост про вигорання для LinkedIn"
         │                       │
         │ Чи є минулі пости    │──── Так → read_past_posts("вигорання")
         │ на цю тему?          │
-        │                       │
-        │ Чи вказано Notion     │──── Так → read_notion_page(url)
-        │ як джерело?           │
         └───────────┬───────────┘
                     │
                     ▼
@@ -97,7 +94,7 @@ User: "напиши пост про вигорання для LinkedIn"
             │               │
             ▼               ▼
      Перегенерація    save_to_file()
-     частини          write_to_notion()
+     частини
 ```
 
 ### Decision Flow: Створення Style Profile
@@ -108,7 +105,7 @@ User: ghostpen init
             ▼
   ┌─────────────────────┐
   │ Запитати джерело:   │
-  │ paste / file / notion│
+  │ paste / file        │
   └─────────┬───────────┘
             │
             ▼
@@ -300,8 +297,6 @@ export async function readStyleProfile(): Promise<StyleProfile> {
 ### 5. Utils
 
 - **`logger.ts`** — логує рішення агента: який tool викликав, чому, з якими параметрами. Для дебагу і розуміння поведінки.
-- **`config.ts`** — завантажує `.env`, валідує обов'язкові ключі.
-- **`notion-helpers.ts`** — конвертує Notion blocks у Markdown і назад.
 
 ---
 
@@ -367,7 +362,6 @@ platform: linkedin
 topic: burnout
 created: 2026-02-08T14:30:00Z
 style_profile_version: 3
-notion_url: https://notion.so/...
 ---
 
 [текст поста]
@@ -384,13 +378,6 @@ notion_url: https://notion.so/...
 - Max tokens: 4096 для генерації, 8192 для аналізу стилю
 - Temperature: 0.7 для генерації, 0.3 для аналізу
 
-### Notion API
-
-- Читання: `pages.retrieve` + `blocks.children.list`
-- Запис: `pages.create` в database
-- Auth: Integration token через `.env`
-- Fallback: якщо Notion недоступний → локальні файли, без помилок
-
 ### Web Search
 
 - Через Claude tool use з web_search (якщо доступний)
@@ -405,7 +392,6 @@ notion_url: https://notion.so/...
 
 | Помилка | Fallback |
 |---|---|
-| Notion API недоступний | Працюємо з локальними файлами |
 | Style Profile не знайдений | Пропонуємо `ghostpen init` |
 | Web search не працює | Генеруємо без свіжих даних, попереджаємо |
 | Claude API rate limit | Retry з exponential backoff (3 спроби) |
@@ -420,7 +406,7 @@ notion_url: https://notion.so/...
 [INFO]  Tool: search_web("burnout statistics 2025")
 [DEBUG] Search returned 5 results
 [INFO]  Generating draft for LinkedIn...
-[WARN]  Notion unavailable, saving locally
+[INFO]  Saving to file
 ```
 
 Логи пишуться в stdout. В debug режимі (`ghostpen --debug`) показують всі рішення агента.
@@ -430,9 +416,8 @@ notion_url: https://notion.so/...
 ## Security
 
 - API ключі тільки в `.env`, файл в `.gitignore`
-- Notion token має мінімальні permissions (read/write тільки потрібні бази)
 - Style profile може містити чутливу інформацію (особистий стиль) — файл локальний, не синхронізується нікуди без явного запиту
-- Ніякої телеметрії, ніяких зовнішніх запитів крім Claude API, Notion API і web search
+- Ніякої телеметрії, ніяких зовнішніх запитів крім Claude API і web search
 
 ---
 
