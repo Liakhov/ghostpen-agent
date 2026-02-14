@@ -7,7 +7,6 @@ export interface SessionLog {
   started_at: string;
   input: string;
   profile_used: string;
-  notion_enabled: boolean;
   events: LogEvent[];
   usage: TokenUsage;
   cost_usd?: number;
@@ -42,14 +41,13 @@ export class SessionLogger {
   private log: SessionLog;
   private filePath: string;
 
-  constructor(input: string, profileUsed: string, notionEnabled: boolean) {
+  constructor(input: string, profileUsed: string) {
     const id = sessionId();
     this.log = {
       session_id: id,
       started_at: ts(),
       input,
       profile_used: profileUsed,
-      notion_enabled: notionEnabled,
       events: [],
       usage: { input: 0, output: 0, cache_write: 0, cache_read: 0 },
     };

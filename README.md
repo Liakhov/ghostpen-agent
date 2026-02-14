@@ -73,7 +73,7 @@ npm run dev "тема для платформи"
 npm run dev "post about AI trends" -- --profile competitor-alex
 
 # Mix your voice with someone's techniques
-npm run dev "пост про найм" -- --mix default competitor-alex
+npm run dev "пост про найм" -- --mix "default competitor-alex"
 
 # Debug mode (shows agent decisions)
 npm run dev "тема" -- --debug
@@ -105,23 +105,6 @@ npm run dev "пост про лідерство" -- --mix default competitor-ale
 
 Rules: your tone + their hooks/closings/structure. The result sounds like you, but with their techniques.
 
-## Notion integration
-
-Optional. Add to `.env`:
-
-```
-NOTION_TOKEN=secret_...
-NOTION_DATABASE_ID=...
-```
-
-When configured, Ghostpen can:
-- **Read** Notion pages as source material: `npm run dev "пост на основі https://notion.so/page-id"`
-- **Save** drafts to your Notion content calendar (prompts after local save)
-
-Database properties: Title, Platform, Topic, Status (Draft), Created, Profile.
-
-When Notion is not configured, it works fully offline — no Notion mentions in the interface.
-
 ## Style Profile
 
 The Style Profile is a JSON file that captures how you write:
@@ -144,9 +127,9 @@ src/
 ├── agent.ts           # Agent conversation loop
 ├── commands/          # init, profile management
 ├── prompts/           # System & task prompts, templates
-├── tools/             # Agent tools (save, search, Notion, feedback)
+├── tools/             # Agent tools (save, search, feedback)
 ├── types/             # TypeScript types
-└── utils/             # Config, Notion helpers
+└── utils/             # Helpers
 data/
 ├── profiles/          # Style profiles (JSON)
 ├── examples/          # Sample posts for analysis
@@ -157,7 +140,7 @@ data/
 
 - **Runtime:** Node.js + TypeScript
 - **AI:** Anthropic SDK (Claude Sonnet 4)
-- **Integrations:** Notion API (optional)
+- **Integrations:** Web search (Anthropic)
 - **Storage:** Local filesystem (JSON + Markdown)
 
 ## License

@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { StyleProfile } from "../types/style-profile.js";
 import { PROFILES_DIR } from "../constants/paths.js";
+import { validateProfile } from "../utils/profile-validation.js";
 
 const IMMUTABLE_FIELDS = new Set([
   "profile_name",
@@ -89,27 +90,6 @@ function validateChange(dotPath: string, value: unknown): string | null {
   }
 
   return null;
-}
-
-function validateProfile(data: unknown): data is StyleProfile {
-  const p = data as Record<string, unknown>;
-  if (!p || typeof p !== "object") return false;
-  if (typeof p.profile_name !== "string") return false;
-  if (p.profile_type !== "personal" && p.profile_type !== "reference")
-    return false;
-  if (typeof p.version !== "number" || p.version < 1) return false;
-
-  const voice = p.voice as Record<string, unknown> | undefined;
-  if (!voice || typeof voice !== "object") return false;
-  if (!Array.isArray(voice.hooks) || voice.hooks.length === 0) return false;
-  if (!Array.isArray(voice.avoid) || voice.avoid.length === 0) return false;
-
-  if (!p.platforms || typeof p.platforms !== "object") return false;
-  if (Object.keys(p.platforms as object).length === 0) return false;
-
-  if (!Array.isArray(p.examples) || p.examples.length === 0) return false;
-
-  return true;
 }
 
 export async function updateStyleProfile(input: {

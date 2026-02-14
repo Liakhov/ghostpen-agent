@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { StyleProfile } from "../types/style-profile.js";
+import type { ReadStyleProfileResult } from "../types/tool-results.js";
 import { PROFILES_DIR } from "../constants/paths.js";
+import { validateProfile } from "../utils/profile-validation.js";
 
 export const readStyleProfileSchema = {
   name: "read_style_profile" as const,
@@ -32,31 +34,9 @@ async function listAvailableProfiles(): Promise<string[]> {
   }
 }
 
-function validateProfile(data: unknown): data is StyleProfile {
-  const p = data as Record<string, unknown>;
-  if (!p || typeof p !== "object") return false;
-  if (typeof p.profile_name !== "string") return false;
-  if (p.profile_type !== "personal" && p.profile_type !== "reference")
-    return false;
-  if (typeof p.version !== "number" || p.version < 1) return false;
-  if (typeof p.language !== "string") return false;
-
-  const voice = p.voice as Record<string, unknown> | undefined;
-  if (!voice || typeof voice !== "object") return false;
-  if (!Array.isArray(voice.hooks) || voice.hooks.length === 0) return false;
-  if (!Array.isArray(voice.avoid) || voice.avoid.length === 0) return false;
-
-  if (!p.platforms || typeof p.platforms !== "object") return false;
-  if (Object.keys(p.platforms as object).length === 0) return false;
-
-  if (!Array.isArray(p.examples) || p.examples.length === 0) return false;
-
-  return true;
-}
-
 export async function readStyleProfile(input: {
   profile_name?: string;
-}): Promise<object> {
+}): Promise<ReadStyleProfileResult> {
   const profileName = input.profile_name || "default";
   const filePath = path.join(PROFILES_DIR, `${profileName}.json`);
 

@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { OUTPUT_DIR } from "../constants/paths.js";
+import type { SaveToFileResult } from "../types/tool-results.js";
 
 const CYRILLIC_MAP: Record<string, string> = {
   а: "a", б: "b", в: "v", г: "h", ґ: "g", д: "d", е: "e", є: "ye",
@@ -61,7 +62,7 @@ export async function saveToFile(input: {
   platform: string;
   topic: string;
   profile_used?: string;
-}): Promise<object> {
+}): Promise<SaveToFileResult> {
   const { content, platform, topic, profile_used = "default" } = input;
 
   const date = new Date().toISOString().slice(0, 10);
