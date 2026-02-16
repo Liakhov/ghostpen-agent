@@ -143,6 +143,3 @@ vite.config.ts.timestamp-*
 
 # Ghostpen output
 data/output/
-
-# Roadmap document
-docs/roadmap.md
