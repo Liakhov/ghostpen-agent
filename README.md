@@ -14,8 +14,8 @@ Feed it your best posts — it builds a Style Profile capturing your tone, rhyth
 ### Installation
 
 ```bash
-git clone https://github.com/Liakhov/ghostpen-agent.git
-cd ghostpen-agent
+git clone https://github.com/Liakhov/ghostpen.git
+cd ghostpen
 npm install
 cp .env.example .env
 ```
