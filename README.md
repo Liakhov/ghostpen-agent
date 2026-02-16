@@ -1,21 +1,15 @@
 # Ghostpen
 
-AI-powered CLI agent that learns your writing style and generates social media content in your voice.
+CLI tool that learns your writing style and generates social media posts in your voice.
 
-Ghostpen analyzes your best posts, builds a Style Profile, and generates drafts that sound like you — not like generic AI. One good draft instead of ten mediocre ones.
+Feed it your best posts — it builds a Style Profile capturing your tone, rhythm, hooks, and taboos. Then give it a topic, and it generates a draft that sounds like you wrote it.
 
-## How it works
-
-1. **Learns your style** — feed it 10-20 of your best posts, it creates a Style Profile: tone, sentence rhythm, hooks, signature phrases, what you never write
-2. **Generates in your voice** — give it a topic and platform, it autonomously decides what to do: reads your profile, searches for fresh stats, checks past posts, generates a draft
-3. **Evolves with feedback** — say "too formal" and it regenerates. After repeated feedback, it suggests updating your profile
-
-## Quick start
+## Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
-- [Anthropic API key](https://console.anthropic.com/)
+- [OpenAI API key](https://platform.openai.com/api-keys)
 
 ### Installation
 
@@ -23,125 +17,87 @@ Ghostpen analyzes your best posts, builds a Style Profile, and generates drafts 
 git clone https://github.com/Liakhov/ghostpen-agent.git
 cd ghostpen-agent
 npm install
-```
-
-Create a `.env` file:
-
-```bash
 cp .env.example .env
 ```
 
-Add your Anthropic API key to `.env`:
+Add your API key to `.env`:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
 ```
 
-### Create your Style Profile
+### Create Your Style Profile
 
 ```bash
 npm run dev init
 ```
 
-Paste 10-20 of your best posts separated by `---`. Ghostpen will analyze them and build a profile capturing your tone, hooks, closings, signature phrases, and what you never write.
+Paste 10-20 of your best posts separated by `---`. Ghostpen analyzes them and creates a markdown profile with your tone, hooks, closings, signature phrases, and avoid list.
 
-### Generate a post
+### Generate a Post
 
 ```bash
-npm run dev "напиши пост про вигорання для LinkedIn"
+npm run dev "post about burnout for LinkedIn"
 ```
 
-After generation, give feedback or type `ok` to save:
+Review the draft, give feedback, or type `ok` to save:
 
 ```
-Що змінити? (або "ok" щоб зберегти)
-> hook слабкий, зроби провокативніше
+What to change? (or "ok" to save)
+> hook is weak, make it provocative
 
 [regenerated draft]
 
 > ok
-💾 Збережено: data/output/generated/2026-02-09-vyhorannya-linkedin.md
+💾 Saved to data/output/2026-02-09-burnout-linkedin.md
 ```
 
 ## Commands
 
 ```bash
-# Generate a post (default profile)
-npm run dev "тема для платформи"
-
-# Use a specific profile
-npm run dev "post about AI trends" -- --profile competitor-alex
-
-# Mix your voice with someone's techniques
-npm run dev "пост про найм" -- --mix "default competitor-alex"
-
-# Debug mode (shows agent decisions)
-npm run dev "тема" -- --debug
-
-# Create your personal Style Profile
-npm run dev init
-
-# Manage profiles
-npm run dev profile create competitor-alex
-npm run dev profile list
-npm run dev profile show competitor-alex
-npm run dev profile delete competitor-alex
+npm run dev init                          # Create personal style profile
+npm run dev "topic for platform"          # Generate post
+npm run dev "topic" -- --profile name     # Use specific profile
+npm run dev profile create name           # Create reference profile
+npm run dev profile list                  # List all profiles
+npm run dev profile show name             # Show profile details
+npm run dev profile delete name           # Delete profile
 ```
-
-## Multi-profile & Mix Mode
-
-**Reference profiles** let you capture the style of other authors (competitors, mentors):
-
-```bash
-npm run dev profile create competitor-alex
-# Paste their posts, get a reference profile
-```
-
-**Mix mode** combines your voice with their techniques:
-
-```bash
-npm run dev "пост про лідерство" -- --mix default competitor-alex
-```
-
-Rules: your tone + their hooks/closings/structure. The result sounds like you, but with their techniques.
 
 ## Style Profile
 
-The Style Profile is a JSON file that captures how you write:
+A markdown file that captures how you write:
 
-- **Tone** — "friendly, slightly ironic" not just "professional"
-- **Sentence style** — short and punchy? long and narrative?
-- **Hooks** — how you start posts (provocative statement, personal story, question)
-- **Closings** — how you end (open question, sharp one-liner, soft CTA)
+- **Voice** — tone, formality, personality, sentence style
+- **Hooks** — how you open posts (provocation, story, question, stat)
+- **Closings** — how you end (open question, one-liner, CTA)
 - **Signature phrases** — your recurring expressions
-- **Avoid list** — things you never write (corporate jargon, motivational cliches)
-- **Platform rules** — structure, length, formatting per platform (LinkedIn, Instagram, X)
+- **Avoid** — things you never write (corporate jargon, cliches)
+- **Platform rules** — structure, length, formatting per platform
+- **Examples** — your best posts with annotations
 
-Profiles live in `data/profiles/`. Your personal profile evolves with feedback. Reference profiles (competitors, mentors) stay static unless you manually update them.
+Profiles live in `data/profiles/`. Your personal profile (`default.md`) evolves with feedback.
 
-## Project structure
+## Project Structure
 
 ```
 src/
 ├── index.ts           # CLI entry point
-├── agent.ts           # Agent conversation loop
-├── commands/          # init, profile management
-├── prompts/           # System & task prompts, templates
-├── tools/             # Agent tools (save, search, feedback)
-├── types/             # TypeScript types
-└── utils/             # Helpers
+├── pipeline/          # Generate, refine, init-profile
+├── prompts/           # System & task prompts
+├── services/          # OpenAI API, post search
+├── utils/             # Frontmatter, pricing, logger
+└── types/             # TypeScript types
 data/
-├── profiles/          # Style profiles (JSON)
-├── examples/          # Sample posts for analysis
-└── output/generated/  # Generated drafts (Markdown)
+├── profiles/          # Style profiles (Markdown)
+└── output/            # Generated posts (Markdown)
 ```
 
-## Tech stack
+## Tech Stack
 
 - **Runtime:** Node.js + TypeScript
-- **AI:** Anthropic SDK (Claude Sonnet 4)
-- **Integrations:** Web search (Anthropic)
-- **Storage:** Local filesystem (JSON + Markdown)
+- **AI:** OpenAI API (GPT-4.1 mini for generation, GPT-4.1 nano for analysis)
+- **Storage:** Local filesystem (Markdown + YAML frontmatter)
 
 ## License
 
