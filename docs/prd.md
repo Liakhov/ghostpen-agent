@@ -1,282 +1,162 @@
-# Product Requirements Document — Ghostpen v0.1
+# PRD — Ghostpen v0.2
 
 ## Scope
 
-v0.1 — CLI-агент для одного користувача. Без UI, без бази даних, без мультиюзерності. Мета: працюючий прототип, який приносить реальну користь автору щодня.
+CLI tool that learns your writing style and generates social media posts in your voice. v0.2 migrates from Anthropic agent (tool-routing) to deterministic pipeline with OpenAI API. Same features, new architecture — LLM only generates text, code handles orchestration. Single user, local filesystem, no UI.
 
+## Features
+
+### Init (`ghostpen init`)
+Collect 10-20 user posts (paste or file), send to API for style analysis, save markdown profile to `data/profiles/default.md`. Show human-readable summary. Interactive corrections update the profile.
+
+### Generate (`ghostpen "topic for platform"`)
+Load style profile → find past posts on similar topic → build prompt → single API call → display draft. Feedback loop: user gives corrections, agent regenerates. `ok` saves to `data/output/`. Supports `--profile name` to use a different profile.
+
+### Feedback loop
+After generation, user can request changes inline. Style-related corrections (repeated 3+ times) trigger a proposal to update the personal profile. Feedback tracker persists in `data/profiles/default.md` frontmatter. Reference profiles never update from feedback.
+
+#### Feedback classification
+
+Pipeline classifies each feedback as **style** or **content** using simple heuristics (no LLM call):
+
+| Type | Detection | Examples | Action |
+|------|-----------|----------|--------|
+| Style | Matches keyword patterns: tone, formal, casual, short, long, voice, sound, hook | "too formal", "make it shorter", "sounds like AI" | Track in frontmatter, propose profile update at 3+ |
+| Content | Everything else | "change the example to X", "add a CTA about Y" | Apply to current draft only, no tracking |
+
+#### Feedback tracker schema
+
+Stored in profile frontmatter under `feedback_tracker`:
+
+```yaml
 ---
-
-## User Stories
-
-### US-1: Створення персонального Style Profile
-> "Навчи агента писати як я"
-
-**Як** творець контенту,
-**я хочу** дати агенту свої найкращі пости,
-**щоб** він зрозумів мій стиль і міг писати схоже.
-
-**Сценарій:**
-1. Користувач запускає `ghostpen init`
-2. Агент просить вставити 10-20 текстів
-3. Агент аналізує тексти і створює `data/profiles/default.json`
-4. Агент показує summary: "Твій стиль: дружній але експертний, короткі рубані речення, часто починаєш з провокативного питання, уникаєш канцеляризмів і emoji"
-5. Користувач коригує: "Я іноді використовую emoji, додай це" → профіль оновлюється
-
-**Acceptance Criteria:**
-- Профіль створюється з `profile_type: "personal"` і `profile_name: "default"`
-- Містить: tone, formality, personality, sentence_style, paragraph_style, hooks, closings, signature_phrases, avoid, emoji_usage
-- Містить platform-specific rules (LinkedIn vs Instagram vs X)
-- Секція `examples` зберігає 3-5 найкращих постів як референси з поясненням `why_good`
-- Summary написаний зрозумілою мовою, не JSON
-- Весь процес займає < 3 хвилини
-
-**Priority:** P0
-
+version: 3
+type: personal
+language: uk
+feedback_tracker:
+  - pattern: "too formal"
+    category: tone
+    count: 4
+    first_seen: 2026-02-08T14:30:00Z
+    last_seen: 2026-02-10T09:00:00Z
+    resolved: false
+  - pattern: "shorter sentences"
+    category: sentence_style
+    count: 2
+    first_seen: 2026-02-09T11:00:00Z
+    last_seen: 2026-02-09T16:00:00Z
+    resolved: false
 ---
-
-### US-2: Створення reference-профілю конкурента
-> "Хочу зрозуміти як він пише"
-
-**Як** творець контенту,
-**я хочу** створити профіль стилю іншого автора,
-**щоб** аналізувати його прийоми і вчитися у нього.
-
-**Сценарій:**
-1. Користувач: `ghostpen profile create competitor-alex`
-2. Агент просить вставити 10-15 постів цього автора (copy-paste)
-3. Агент аналізує і створює `data/profiles/competitor-alex.json`
-4. Показує summary стилю: "Alex пише: впевнений тон, довгі наративні абзаци, починає з особистої історії, уникає прямих CTA"
-5. Користувач може підкоригувати якщо знає автора краще ніж видно з текстів
-
-**Acceptance Criteria:**
-- Профіль створюється з `profile_type: "reference"`
-- `source` фіксує звідки взяті тексти
-- Та сама структура що й personal профіль
-- Reference профіль НЕ еволюціонує з фідбеком автоматично
-- Оновлюється тільки коли користувач явно додає нові пости або редагує вручну
-- Команда `ghostpen profile list` показує всі профілі з типами
-
-**Priority:** P1
-
----
-
-### US-3: Генерація поста
-> "Напиши пост — але як я б написав"
-
-**Як** творець контенту,
-**я хочу** дати тему і отримати готову чернетку у моєму стилі,
-**щоб** скоротити час написання з 2 годин до 15 хвилин.
-
-**Сценарій:**
-1. Користувач: `ghostpen "пост про вигорання для LinkedIn"`
-2. Агент автономно вирішує план дій:
-    - Завжди: читає style profile (default або вказаний через `--profile`)
-    - Якщо потрібно: шукає свіжу статистику/факти в вебі
-    - Якщо є: перевіряє минулі пости на схожу тему
-3. Генерує чернетку відповідно до platform rules
-4. Виводить результат і чекає фідбек
-
-**Acceptance Criteria:**
-- Агент ЗАВЖДИ читає style profile перед генерацією (не опціонально)
-- Вибір додаткових tools — автономний, на основі контексту
-- Результат відповідає platform-specific обмеженням (довжина, структура)
-- Чернетка зберігається в `data/output/` з датою і темою в назві файлу
-- Час від запиту до чернетки: < 30 секунд
-- Якість: < 30% правок потрібно для публікації
-
-**Priority:** P0
-
----
-
-### US-4: Генерація у стилі конкурента
-> "Напиши як Alex"
-
-**Як** творець контенту,
-**я хочу** згенерувати пост у стилі іншого автора,
-**щоб** зрозуміти його підхід зсередини і поекспериментувати.
-
-**Сценарій:**
-1. Користувач: `ghostpen "пост про AI тренди" --profile competitor-alex`
-2. Агент читає `competitor-alex.json` замість `default.json`
-3. Генерує пост повністю у стилі Alex
-
-**Acceptance Criteria:**
-- `--profile <name>` перемикає активний профіль для цієї генерації
-- Якщо профіль не знайдений → зрозуміле повідомлення + `ghostpen profile list`
-- Фідбек на цю генерацію НЕ оновлює reference профіль
-- В metadata збереженого файлу вказано який профіль використано
-
-**Priority:** P1
-
----
-
-### US-5: Mix Mode — мій голос + чужі прийоми
-> "Хочу звучати як я, але з його структурою"
-
-**Як** творець контенту,
-**я хочу** комбінувати свій стиль з прийомами іншого автора,
-**щоб** покращити свій контент не втрачаючи автентичності.
-
-**Сценарій:**
-1. Користувач: `ghostpen "пост про найм" --mix default competitor-alex`
-2. Агент читає обидва профілі
-3. Бере з першого (base): tone, formality, personality, avoid, emoji_usage, signature_phrases
-4. Бере з другого (techniques): hooks, closings, sentence_style, paragraph_style, structure
-5. Генерує гібридний пост
-
-**Acceptance Criteria:**
-- `--mix` приймає рівно два імені профілів: base + techniques
-- Перший профіль = голос і характер, другий = технічні прийоми
-- Результат звучить як автор першого профілю, але використовує структуру другого
-- Агент в output пояснює що саме він запозичив: "Використав hook-стиль Alex (особиста історія) + твій тон і signature phrases"
-- Фідбек оновлює тільки personal профіль (якщо base = personal)
-- В metadata обидва профілі зафіксовані
-
-**Priority:** P1
-
----
-
-### US-6: Feedback Loop
-> "Не так — ось так"
-
-**Як** творець контенту,
-**я хочу** сказати агенту що не так з чернеткою,
-**щоб** він виправив і запам'ятав на майбутнє.
-
-**Сценарій:**
-1. Агент показує чернетку
-2. Користувач: "hook слабкий, зроби провокативніше"
-3. Агент перегенерує тільки hook
-4. Після 5-ї генерації де користувач каже "занадто формально", агент пропонує: "Я помітив що ти часто просиш зробити менш формально. Оновити style profile?"
-5. Користувач: "так" → профіль оновлюється
-
-**Acceptance Criteria:**
-- Конкретна правка → перегенерація відповідної частини (не всього тексту)
-- Стильова правка → перегенерація + пропозиція оновити profile
-- "ok" / "зберігай" → збереження фінальної версії
-- Агент трекає повторюваний фідбек (лічильник по категоріях у `feedback-tracker.json`)
-- Пропозиція оновити профіль — після 3+ схожих правок
-- Оновлення тільки після явного підтвердження користувача
-- Feedback loop працює ТІЛЬКИ з personal профілем. Reference профілі не оновлюються через фідбек
-- Кожне оновлення профілю логується в changelog всередині profile
-
-**Priority:** P0
-
----
-
-### US-7: Аналіз контенту
-> "Що працює, а що ні?"
-
-**Як** творець контенту,
-**я хочу** попросити агента проаналізувати мої пости,
-**щоб** зрозуміти свої сильні та слабкі сторони.
-
-**Сценарій:**
-1. Користувач: `ghostpen analyze` (бере пости з data/examples/)
-2. Агент аналізує набір постів
-3. Видає звіт: найсильніші hooks, типова структура, слабкі місця, рекомендації
-4. Пропонує конкретні зміни до style profile
-
-**Acceptance Criteria:**
-- Аналіз працює на 5-30 постах
-- Звіт містить: патерни що працюють, що можна покращити, конкретні приклади з постів
-- Рекомендації actionable ("спробуй починати з числа замість питання"), не абстрактні
-- Пропозиції до profile — як diff: "додати 'числовий hook' до списку hooks"
-
-**Priority:** P1
-
----
-
-## Технічні вимоги
-
-### Agent Core
-
-Агент працює як autonomous loop:
-```
-User Input → Read Context → Plan → Execute Tools → Generate → Present → Wait for Feedback
 ```
 
-- Вибір tools — автономний, Claude вирішує на основі system prompt
-- Єдине hardcoded правило: ЗАВЖДИ читай style profile перед генерацією
-- Всі рішення агента логуються для дебагу
+**Grouping:** Feedback is normalized to lowercase and matched against existing patterns using keyword overlap. "too formal" and "sounds too official" both match the "too formal" pattern if they share 50%+ keywords. If no match — create new pattern.
 
-### Tools
+**Resolution:** When a profile update is accepted, the corresponding pattern is marked `resolved: true` and stops counting.
 
-| Tool | Коли викликається | Input | Output |
-|---|---|---|---|
-| `read_style_profile` | Кожна генерація (обов'язково) | profile_name (default: "default") | Style Profile JSON |
-| `update_style_profile` | Після підтвердженого фідбеку | profile_name + changes object | Updated profile + changelog entry |
-| `list_profiles` | Коли потрібно обрати профіль | — | Список профілів з типами |
-| `search_web` | Коли потрібна статистика або факти | query string | Top results |
-| `read_past_posts` | Коли тема перетинається з минулими | topic keywords | Relevant posts |
-| `save_to_file` | Кожна фінальна версія | content + metadata | File path |
+### Profile CRUD (`ghostpen profile <action>`)
+- `create <name>` — create reference profile from pasted posts
+- `list` — show all profiles with types
+- `show <name>` — display profile content
+- `delete <name>` — remove profile
 
-### Stack
+Two types: `personal` (one, evolves with feedback) and `reference` (many, static).
 
-- **Runtime:** Node.js + TypeScript
-- **AI:** Anthropic SDK (Claude 3.5/4)
-- **Integrations:** Web search (Anthropic)
-- **Storage:** Локальна файлова система (JSON + Markdown)
-- **Залежностей мінімум:** anthropic, dotenv, chalk, commander (для CLI output)
+## Implementation tasks
 
-### Performance
+| # | Task | Files |
+|---|------|-------|
+| 1 | Replace Anthropic SDK with OpenAI SDK | `package.json`, `src/services/openai.ts` (new) |
+| 2 | Create pipeline runner (parse → load → build → call → display) | `src/pipeline/runner.ts` (new) |
+| 3 | Implement init-profile pipeline | `src/pipeline/init-profile.ts` (new), `src/prompts/tasks/create-profile.ts` |
+| 4 | Implement generate pipeline | `src/pipeline/generate.ts` (new), `src/prompts/system.ts` |
+| 5 | Implement refine pipeline (feedback iteration) | `src/pipeline/refine.ts` (new) |
+| 6 | Port profile CRUD commands | `src/commands/profile.ts`, `src/commands/profile-flow.ts` |
+| 7 | Port past-posts search to pipeline util | `src/services/post-search.ts` (new) |
+| 8 | Update CLI entry point for pipeline routing | `src/index.ts` |
+| 9 | Remove agent layer (`src/agent/`, `src/tools/`) | `src/agent/*`, `src/tools/*` |
+| 10 | Update prompts for OpenAI message format | `src/prompts/**` |
 
-- Створення Style Profile: < 2 хвилини (на 15 постах)
-- Генерація поста: < 30 секунд
-- Feedback → перегенерація: < 15 секунд
-- Mix mode генерація: < 45 секунд (два профілі в контексті)
+## File structure
 
+```
+src/
+├── index.ts              # CLI entry point (commander)
+├── pipeline/
+│   ├── runner.ts         # Pipeline orchestrator
+│   ├── init-profile.ts   # Profile creation pipeline
+│   ├── generate.ts       # Post generation pipeline
+│   └── refine.ts         # Feedback refinement pipeline
+├── commands/
+│   ├── init.ts           # Init command handler
+│   ├── profile.ts        # Profile CRUD commands
+│   └── profile-flow.ts   # Interactive profile creation flow
+├── services/
+│   ├── openai.ts         # OpenAI API client
+│   └── post-search.ts    # Past posts search
+├── prompts/
+│   ├── system.ts         # System prompt builder
+│   └── tasks/            # Task-specific prompts
+├── utils/
+│   ├── frontmatter.ts    # YAML frontmatter parse/serialize
+│   ├── pricing.ts        # Token cost tracking
+│   ├── logger.ts         # Console output formatting
+│   └── cli.ts            # CLI helpers (readline, input)
+├── types/
+│   └── index.ts          # TypeScript types
+└── constants/
+    ├── paths.ts          # File paths
+    └── app.ts            # App constants
+data/
+├── profiles/             # Style profiles (Markdown + YAML frontmatter)
+│   ├── default.md        # Personal profile
+│   └── {name}.md         # Reference profiles
+└── output/               # Generated posts (Markdown + YAML frontmatter)
+```
+
+## Stack & dependencies
+
+| Dependency | Purpose |
+|-----------|---------|
+| `openai` | OpenAI API client (GPT-4.1 mini for generation, GPT-4.1 nano for analysis) |
+| `commander` | CLI argument parsing |
+| `chalk` | Terminal styling |
+| `dotenv` | Environment variables |
+| `tsx` | TypeScript execution (dev) |
+| `typescript` | Type checking (dev) |
+
+## Quality Metrics
+
+Track these to measure generation quality over time. Stored per-session in generated post frontmatter.
+
+| Metric | How to measure | Target |
+|--------|---------------|--------|
+| First-draft acceptance rate | Posts saved with 0 refine iterations / total posts | > 30% |
+| Average refine iterations | Mean iterations before "ok" | < 3 |
+| Hook compliance | Hook used from profile Hooks list (yes/no, logged in frontmatter) | > 80% |
+| Avoid list violations | Items from Avoid list found in final output (post-save check) | 0 |
+| Profile update frequency | How often feedback triggers profile changes | 1-2x per week (healthy learning) |
+
+**Generated post frontmatter extension:**
+
+```yaml
 ---
-
-## Обмеження v0.1
-
-- Один користувач, кілька профілів (один personal + необмежено reference)
-- Тільки текстовий контент (без зображень, каруселей, відео)
-- Три платформи: LinkedIn, Instagram, X
-- Без автоматичної публікації
-- Без аналітики ефективності після публікації
-- Тільки англійська та українська (мова визначається з профілю)
-
+platform: linkedin
+topic: burnout
+profile: default
+created: 2026-02-08T14:30:00Z
+iterations: 2
+hook_from_profile: true
 ---
+```
 
-## Метрики успіху
+These metrics are logged locally — no external analytics. Run `ghostpen stats` (future) to see trends.
 
-| Метрика | Ціль |
-|---|---|
-| Щоденне використання | Я сам використовую це 5 днів на тиждень протягом 2 тижнів |
-| Якість генерації | Чернетка потребує < 30% правок |
-| Стиль | 3 з 5 людей не впізнають AI у фінальному тексті |
-| Швидкість | Час створення поста скорочується вдвічі |
-| Style Profile | Після 20 генерацій профіль точніше описує стиль ніж на старті |
-| Mix Mode | Результат mix mode відчувається як "мій текст з новим прийомом", не як Франкенштейн |
+## Constraints
 
----
-
-## Roadmap
-
-### v0.1 — CLI Agent (зараз)
-- Персональний Style Profile creation
-- Reference profiles для конкурентів
-- Post generation з autonomous tool selection
-- Mix mode (мій голос + чужі прийоми)
-- Feedback loop з еволюцією профілю
-- Локальне збереження
-
-### v0.2 — Покращення якості
-- A/B тестування hooks (агент пропонує 2-3 варіанти)
-- Контент-календар (агент сам пропонує теми на тиждень)
-- Multi-language support
-- Покращений аналіз контенту з метриками
-- Порівняльний аналіз профілів ("чим твій стиль відрізняється від Alex")
-
-### v1.0 — Web UI + Multi-user
-- Next.js інтерфейс
-- Supabase auth + окремі профілі
-- Командна робота (один профіль — кілька авторів)
-- Інтеграція з Buffer/Later для публікації
-
-### v2.0 — Platform
-- Маркетплейс Style Profiles
-- API для сторонніх інтеграцій
-- Аналітика ефективності (зв'язок стиль → engagement)
-- Бібліотека reference-профілів для популярних ніш
+- Single user, no auth
+- Text only — no images, carousels, video
+- Platforms: LinkedIn, Instagram, X
+- No auto-publishing
+- Local filesystem only (Markdown + YAML frontmatter)
+- Ukrainian and English (detected from profile)
+- No web search in v0.2 (removed with agent layer, revisit later)
