@@ -1,5 +1,5 @@
 {
-  "name": "ghostpen-agent",
+  "name": "ghostpen",
   "version": "1.0.0",
   "description": "",
   "main": "dist/index.js",
@@ -11,17 +11,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Liakhov/ghostpen-agent.git"
+    "url": "git+https://github.com/Liakhov/ghostpen.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Liakhov/ghostpen-agent/issues"
+    "url": "https://github.com/Liakhov/ghostpen/issues"
   },
-  "homepage": "https://github.com/Liakhov/ghostpen-agent#readme",
+  "homepage": "https://github.com/Liakhov/ghostpen#readme",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.74.0",
+    "openai": "^4.96.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "dotenv": "^17.2.4",
