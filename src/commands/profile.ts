@@ -3,7 +3,6 @@ import * as path from "node:path";
 import chalk from "chalk";
 import type { StyleProfile } from "../types/style-profile.js";
 import { formatSummary } from "./init.js";
-import { runProfileCreationFlow } from "./profile-flow.js";
 import { PROFILES_DIR } from "../constants/paths.js";
 
 export async function createProfile(name: string): Promise<void> {
@@ -16,12 +15,8 @@ export async function createProfile(name: string): Promise<void> {
     return;
   }
 
-  await runProfileCreationFlow({
-    profileType: "reference",
-    profileName: name,
-    title: `Ghostpen — створення reference профілю "${name}"`,
-    postsPrompt: "Встав пости автора (10-20 штук).",
-  });
+  // TODO: wire up init-profile pipeline for reference profiles (task #4)
+  console.log(chalk.yellow(`Profile creation pipeline not yet implemented for "${name}".`));
 }
 
 export async function listProfiles(): Promise<void> {

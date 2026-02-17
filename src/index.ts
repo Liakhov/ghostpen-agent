@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Command } from "commander";
-import { runAgent } from "./agent.js";
 import { runInit } from "./commands/init.js";
 import {
   createProfile,
@@ -46,26 +45,16 @@ profileCmd
 
 program
   .argument("[topic...]", 'Topic for the post (e.g. "напиши пост про вигорання для LinkedIn")')
-  .option("-p, --profile <name>", "Profile to use")
-  .option("--mix <profiles>", 'Mix mode: base + ref (e.g. --mix "default competitor-alex")')
-  .option("--debug", "Debug mode")
-  .action(async (topic: string[], options: { profile?: string; mix?: string; debug?: boolean }) => {
+  .option("-p, --profile <name>", "Profile to use", "default")
+  .action(async (topic: string[]) => {
     const input = topic?.join(" ") ?? "";
     if (!input.trim()) {
       program.outputHelp();
       process.exit(0);
     }
 
-    const agentOptions: { profile?: string; mix?: [string, string]; debug?: boolean } = {};
-    if (options.mix) {
-      const parts = options.mix.trim().split(/\s+/);
-      if (parts.length >= 2) agentOptions.mix = [parts[0], parts[1]];
-    } else if (options.profile) {
-      agentOptions.profile = options.profile;
-    }
-    if (options.debug) agentOptions.debug = true;
-
-    await runAgent(input, Object.keys(agentOptions).length > 0 ? agentOptions : undefined);
+    // TODO: wire up generate pipeline (task #3)
+    console.log(`Generate pipeline not yet implemented. Topic: "${input}"`);
   });
 
 async function main(): Promise<void> {

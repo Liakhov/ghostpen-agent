@@ -1,7 +1,6 @@
 import type { Interface as ReadlineInterface } from "node:readline";
 import chalk from "chalk";
 import type { StyleProfile } from "../types/style-profile.js";
-import { runProfileCreationFlow } from "./profile-flow.js";
 
 export async function readMultilineInput(rl: ReadlineInterface): Promise<string> {
   console.log(
@@ -59,10 +58,6 @@ export function formatSummary(profile: StyleProfile): string {
 }
 
 export async function runInit(): Promise<void> {
-  await runProfileCreationFlow({
-    profileType: "personal",
-    profileName: "default",
-    title: "Ghostpen Init — створення персонального Style Profile",
-    postsPrompt: "Встав свої найкращі пости (10-20 штук).",
-  });
+  // TODO: wire up init-profile pipeline (task #4)
+  console.log(chalk.yellow("Init pipeline not yet implemented."));
 }
