@@ -7,6 +7,7 @@ import {
   showProfile,
   deleteProfile,
 } from "./commands/profile.js";
+import { generate } from "./pipeline/generate.js";
 import { formatError } from "./utils/errors.js";
 
 const program = new Command();
@@ -46,15 +47,18 @@ profileCmd
 program
   .argument("[topic...]", 'Topic for the post (e.g. "напиши пост про вигорання для LinkedIn")')
   .option("-p, --profile <name>", "Profile to use", "default")
-  .action(async (topic: string[]) => {
+  .action(async (topic: string[], opts: { profile: string }) => {
     const input = topic?.join(" ") ?? "";
     if (!input.trim()) {
       program.outputHelp();
       process.exit(0);
     }
 
-    // TODO: wire up generate pipeline (task #3)
-    console.log(`Generate pipeline not yet implemented. Topic: "${input}"`);
+    await generate({
+      topic: input,
+      platform: "linkedin",
+      profileName: opts.profile,
+    });
   });
 
 async function main(): Promise<void> {
